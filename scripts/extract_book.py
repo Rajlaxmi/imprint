@@ -88,6 +88,7 @@ class EpubXHTMLConverter(HTMLParser):
     BLOCK_TAGS = {"p", "div", "li", "h1", "h2", "h3", "h4", "blockquote"}
     INLINE_EM = {"em", "i"}
     INLINE_STRONG = {"strong", "b"}
+    INLINE_PASSTHROUGH = {"sub", "sup", "code"}
     SKIP_CONTENT_TAGS = {"script", "style", "head", "title", "svg", "nav"}
 
     def __init__(self):
@@ -206,6 +207,9 @@ class EpubXHTMLConverter(HTMLParser):
         elif tag in self.INLINE_STRONG:
             self._inline_stack.append("strong")
             self._push_buf("<strong>")
+        elif tag in self.INLINE_PASSTHROUGH:
+            self._inline_stack.append(tag)
+            self._push_buf(f"<{tag}>")
         elif tag == "a":
             href = attr_map.get("href", "")
             cls = attr_map.get("class", "").lower()
@@ -256,6 +260,10 @@ class EpubXHTMLConverter(HTMLParser):
             if self._inline_stack and self._inline_stack[-1] == "strong":
                 self._inline_stack.pop()
                 self._push_buf("</strong>")
+        elif tag in self.INLINE_PASSTHROUGH:
+            if self._inline_stack and self._inline_stack[-1] == tag:
+                self._inline_stack.pop()
+                self._push_buf(f"</{tag}>")
         elif tag == "a":
             if self._inline_stack and isinstance(self._inline_stack[-1], tuple):
                 kind, _ = self._inline_stack.pop()
@@ -896,32 +904,385 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
     }
 
 
+# ============================================================================
+# Readability-Grade Main Content Extractor for Web / Blog / Essay Links
+# ============================================================================
+
+VOID_HTML_TAGS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+}
+
+DROP_SUBTREE_TAGS = {
+    "script", "style", "noscript", "svg", "iframe", "canvas", "form",
+    "button", "input", "select", "textarea", "nav", "footer", "aside",
+    "dialog", "menu",
+}
+
+NOISE_ATTR_RE = re.compile(
+    r"(^|[\s_-])("
+    r"comment|comments|commentlist|comment-list|respond|reply|replies|disqus|utterances|giscus|pingback|trackback|"
+    r"sidebar|widget|widgets|blogroll|related|recommended|popular|trending|more-posts|"
+    r"share|sharing|sharedaddy|social|robots-nocontent|snap_nopreview|"
+    r"navbar|menubar|breadcrumbs|breadcrumb|pagination|pager|post-navigation|nav-links|navigation|"
+    r"site-header|site-footer|masthead|headerimg|subfooter|colophon|"
+    r"postmetadata|entry-meta|post-meta|entry-footer|post-footer|cat-links|tags-links|taxonomy|"
+    r"newsletter|subscribe|paywall|promo|advert|ad-slot|sponsor|cookie|popup|modal|author-bio"
+    r")($|[\s_-])",
+    re.I,
+)
+
+BOILERPLATE_PARA_RE = re.compile(
+    r"^(this entry was posted\b|posted in\b.*leave a comment|you can follow any responses to this entry|"
+    r"leave a reply|comments are closed|subscribe to our newsletter|share this:)",
+    re.I,
+)
+
+
+class DomNode:
+    __slots__ = ("tag", "attrs", "children", "parent")
+
+    def __init__(self, tag: str, attrs: dict, parent=None):
+        self.tag = tag
+        self.attrs = attrs
+        self.children = []  # DomNode | str
+        self.parent = parent
+
+    def attr_tokens(self) -> str:
+        return " ".join(
+            filter(
+                None,
+                [
+                    self.attrs.get("id", ""),
+                    self.attrs.get("class", ""),
+                    self.attrs.get("role", ""),
+                    self.attrs.get("aria-label", ""),
+                ],
+            )
+        )
+
+    def text_content(self) -> str:
+        out = []
+        for ch in self.children:
+            if isinstance(ch, str):
+                out.append(ch)
+            else:
+                out.append(ch.text_content())
+        return clean_whitespace(" ".join(out))
+
+    def link_text_len(self) -> int:
+        if self.tag == "a":
+            return len(self.text_content())
+        return sum(ch.link_text_len() for ch in self.children if isinstance(ch, DomNode))
+
+    def iter_nodes(self):
+        yield self
+        for ch in self.children:
+            if isinstance(ch, DomNode):
+                yield from ch.iter_nodes()
+
+    def to_html(self) -> str:
+        if self.tag == "root":
+            return "".join(ch if isinstance(ch, str) else ch.to_html() for ch in self.children)
+        attrs_str = "".join(
+            f' {k}="{html.escape(v, quote=True)}"'
+            for k, v in self.attrs.items()
+            if k in ("id", "class", "href", "epub:type", "role") and v
+        )
+        if self.tag in VOID_HTML_TAGS:
+            return f"<{self.tag}{attrs_str}/>"
+        inner = "".join(ch if isinstance(ch, str) else ch.to_html() for ch in self.children)
+        return f"<{self.tag}{attrs_str}>{inner}</{self.tag}>"
+
+
+class DomTreeBuilder(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.root = DomNode("root", {})
+        self.cur = self.root
+
+    def handle_starttag(self, tag, attrs):
+        t = tag.lower()
+        amap = {k.lower(): (v or "") for k, v in attrs}
+        node = DomNode(t, amap, self.cur)
+        self.cur.children.append(node)
+        if t not in VOID_HTML_TAGS:
+            self.cur = node
+
+    def handle_startendtag(self, tag, attrs):
+        t = tag.lower()
+        amap = {k.lower(): (v or "") for k, v in attrs}
+        node = DomNode(t, amap, self.cur)
+        self.cur.children.append(node)
+
+    def handle_endtag(self, tag):
+        t = tag.lower()
+        if t in VOID_HTML_TAGS:
+            return
+        p = self.cur
+        while p is not None and p.tag != "root":
+            if p.tag == t:
+                self.cur = p.parent or self.root
+                return
+            p = p.parent
+
+    def handle_data(self, data):
+        if data:
+            self.cur.children.append(html.escape(data))
+
+
+def clean_page_title(raw_title: str, site_name: str = "") -> str:
+    t = clean_whitespace(raw_title)
+    if not t:
+        return ""
+    # Handle WordPress "Site Name » Blog Archive » Actual Title"
+    if "»" in t:
+        parts = [p.strip() for p in t.split("»") if p.strip()]
+        t = parts[-1]
+    # Strip trailing " | Site Name" or " — Site Name"
+    for sep in (" | ", " — ", " – ", " - "):
+        if sep in t:
+            left, right = t.rsplit(sep, 1)
+            if len(left) >= 6 and (not site_name or site_name.lower() in right.lower() or len(right) < 32):
+                t = left.strip()
+                break
+    return t
+
+
+def extract_web_metadata(root: DomNode) -> dict:
+    og_title = ""
+    og_site = ""
+    doc_title = ""
+    author = ""
+    pub_date = ""
+
+    for n in root.iter_nodes():
+        if n.tag == "title" and not doc_title:
+            doc_title = n.text_content()
+        elif n.tag == "meta":
+            prop = (n.attrs.get("property") or n.attrs.get("name") or "").lower()
+            content = clean_whitespace(n.attrs.get("content") or "")
+            if not content:
+                continue
+            if prop in ("og:title", "twitter:title") and not og_title:
+                og_title = content
+            elif prop == "og:site_name" and not og_site:
+                og_site = content
+            elif prop in ("author", "dc.creator", "dcterms.creator", "article:author") and not author:
+                if not content.startswith("http"):
+                    author = content
+            elif prop in ("article:published_time", "date", "dc.date", "pubdate") and not pub_date:
+                pub_date = content[:10]
+        elif n.tag == "time" and not pub_date:
+            dt = clean_whitespace(n.attrs.get("datetime") or n.text_content())
+            if dt:
+                pub_date = dt[:16]
+
+    # Look for explicit article/post title heading in body before site header steals it
+    post_heading = ""
+    for n in root.iter_nodes():
+        if n.tag in ("h1", "h2"):
+            cls = n.attr_tokens().lower()
+            p_cls = (n.parent.attr_tokens().lower() if n.parent else "")
+            if (
+                any(k in cls for k in ("entry-title", "post-title", "article-title", "headline"))
+                or any(k in p_cls for k in ("post", "hentry", "article", "entry-header"))
+                or any(
+                    isinstance(c, DomNode) and c.tag == "a" and "bookmark" in c.attrs.get("rel", "").lower()
+                    for c in n.children
+                )
+            ):
+                cand = n.text_content()
+                if cand:
+                    post_heading = cand
+                    break
+
+    # Look for WordPress / blog date & author if meta tags were absent
+    if not pub_date:
+        full_txt = root.text_content()
+        m_dt = re.search(
+            r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?,\s+(19|20)\d{2}\b",
+            full_txt,
+        )
+        if m_dt:
+            pub_date = m_dt.group(0)
+
+    if not og_site and "»" in doc_title:
+        og_site = doc_title.split("»", 1)[0].strip()
+
+    best_title = post_heading or og_title or clean_page_title(doc_title, og_site)
+    return {
+        "title": best_title,
+        "site_name": og_site,
+        "author": author,
+        "pub_date": pub_date,
+    }
+
+
+def is_protected_main_container(node: DomNode) -> bool:
+    if node.tag in ("html", "body", "main", "article"):
+        return True
+    cls_tokens = set(re.split(r"[\s]+", (node.attrs.get("class") or "").lower()))
+    nid = (node.attrs.get("id") or "").lower()
+    if nid in ("content", "main", "main-content", "primary") or nid.startswith("post-"):
+        return True
+    if cls_tokens & {"post", "hentry", "entry", "entry-content", "post-content", "article-content", "article-body"}:
+        return True
+    return False
+
+
+def prune_noise_subtrees(node: DomNode):
+    kept = []
+    for ch in node.children:
+        if isinstance(ch, str):
+            kept.append(ch)
+            continue
+
+        if ch.tag in DROP_SUBTREE_TAGS:
+            continue
+
+        # Drop page-level <header> banners unless inside <article>/.post
+        if ch.tag == "header":
+            anc = node
+            in_article = False
+            while anc is not None:
+                if anc.tag == "article" or "post" in anc.attr_tokens().lower():
+                    in_article = True
+                    break
+                anc = anc.parent
+            if not in_article:
+                continue
+
+        tokens = ch.attr_tokens()
+        if tokens and not is_protected_main_container(ch) and NOISE_ATTR_RE.search(tokens):
+            continue
+
+        # Drop link-heavy navigation lists / blogrolls / category clouds
+        if ch.tag in ("ul", "ol") and not is_protected_main_container(ch):
+            txt = ch.text_content()
+            tlen = len(txt)
+            if 0 < tlen < 900:
+                llen = ch.link_text_len()
+                if llen / max(1, tlen) > 0.72:
+                    continue
+
+        prune_noise_subtrees(ch)
+        kept.append(ch)
+
+    node.children = kept
+
+
+def select_main_content_node(root: DomNode) -> DomNode:
+    # 1. Explicit article body class/itemprop selectors (cleanest prose-only containers)
+    explicit_classes = (
+        "entry-content",
+        "post-content",
+        "article-content",
+        "article-body",
+        "post-body",
+        "story-body",
+        "available-content",
+        "entry",
+    )
+    matches = []
+    for n in root.iter_nodes():
+        itemprop = (n.attrs.get("itemprop") or "").lower()
+        cls_set = set((n.attrs.get("class") or "").lower().split())
+        if itemprop == "articlebody" or any(c in cls_set for c in explicit_classes):
+            wc = len(n.text_content().split())
+            if wc >= 60:
+                matches.append((wc, n))
+    if matches:
+        # Pick the primary (longest) entry body
+        matches.sort(key=lambda x: x[0], reverse=True)
+        return matches[0][1]
+
+    # 2. Semantic <article> or .post / .hentry / <main>
+    for n in root.iter_nodes():
+        cls_set = set((n.attrs.get("class") or "").lower().split())
+        nid = (n.attrs.get("id") or "").lower()
+        if n.tag == "article" or "post" in cls_set or "hentry" in cls_set or nid.startswith("post-"):
+            if len(n.text_content().split()) >= 60:
+                return n
+
+    for n in root.iter_nodes():
+        if n.tag == "main" or n.attrs.get("role", "").lower() == "main":
+            if len(n.text_content().split()) >= 60:
+                return n
+
+    # 3. Readability paragraph-density scoring fallback
+    best_node = root
+    best_score = -1.0
+    for n in root.iter_nodes():
+        if n.tag not in ("div", "section", "td", "body"):
+            continue
+        p_words = 0
+        commas = 0
+        for ch in n.iter_nodes():
+            if ch.tag in ("p", "blockquote"):
+                t = ch.text_content()
+                p_words += len(t.split())
+                commas += t.count(",")
+        if p_words < 50:
+            continue
+        total_len = max(1, len(n.text_content()))
+        link_density = n.link_text_len() / total_len
+        score = (p_words * 5.0 + commas * 4.0) * max(0.05, 1.0 - link_density * 1.3)
+        if score > best_score:
+            best_score = score
+            best_node = n
+
+    return best_node
+
+
 def extract_html_document(html_path: str) -> dict:
     with open(html_path, "rb") as f:
         raw_html = f.read().decode("utf-8", errors="replace")
 
-    title_m = re.search(r"<title[^>]*>(.*?)</title>", raw_html, re.I | re.S)
-    raw_title = strip_tags(title_m.group(1)) if title_m else ""
-    author_m = re.search(
-        r'<meta[^>]+name=["\'](?:author|dc\.creator|dcterms\.creator)["\'][^>]+content=["\']([^"\']+)["\']',
-        raw_html,
-        re.I,
-    )
-    author = clean_whitespace(author_m.group(1)) if author_m else "Web Edition"
+    # Strip Project Gutenberg outer license wrappers if present
+    start_g = re.search(r"\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG EBOOK[^*]*\*\*\*", raw_html, re.I)
+    if start_g:
+        raw_html = raw_html[start_g.end():]
+    end_g = re.search(r"\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG EBOOK[^*]*\*\*\*", raw_html, re.I)
+    if end_g:
+        raw_html = raw_html[:end_g.start()]
 
-    # Split into chapters if multiple <h1>/<h2> chapter headings exist, else single chapter
+    tree = DomTreeBuilder()
+    tree.feed(raw_html)
+
+    meta = extract_web_metadata(tree.root)
+    prune_noise_subtrees(tree.root)
+    main_node = select_main_content_node(tree.root)
+
+    cleaned_html = main_node.to_html()
     parser = EpubXHTMLConverter()
-    parser.feed(raw_html)
+    parser.feed(cleaned_html)
     parser._flush_block()
 
-    if not parser.blocks:
+    # Filter any residual post-footer boilerplate lines & duplicate title subhead
+    raw_title = meta["title"] or parser.first_heading or "Imported Article"
+    filtered_blocks = []
+    for b in parser.blocks:
+        plain = strip_tags(b["html"])
+        if not plain:
+            continue
+        if BOILERPLATE_PARA_RE.search(plain):
+            continue
+        if len(filtered_blocks) == 0 and b["type"] == "subhead" and plain.lower() == raw_title.lower():
+            continue
+        # Stop if a trailing comment-section heading somehow survived inside the same container
+        if b["type"] == "subhead" and re.match(r"^(\d+\s+responses?\s+to\b|comments?\b|leave\s+a\s+reply\b)", plain, re.I):
+            break
+        filtered_blocks.append(b)
+
+    if not filtered_blocks:
         raise ValueError("No readable article or book text found at that URL.")
 
     grouped = []
-    current_title = parser.first_heading or raw_title or "Chapter 1"
+    current_title = raw_title
     current_blocks = []
 
-    for b in parser.blocks:
+    for b in filtered_blocks:
         if (
             b["type"] == "subhead"
             and re.match(r"^(chapter|part|book|lecture|act)\s+([0-9ivxlcdm]+|[a-z-]+)\b", b["html"], re.I)
@@ -978,23 +1339,24 @@ def extract_html_document(html_path: str) -> dict:
             "endnotes": [],
         })
 
-    if not chapters or sum(c["wordCount"] for c in chapters) < 40:
+    if not chapters or sum(c["wordCount"] for c in chapters) < 30:
         raise ValueError("The linked web page did not contain enough readable text to build a book edition.")
 
-    if not raw_title:
-        raw_title = chapters[0]["title"]
     subtitle = ""
-    if ":" in raw_title:
+    if ":" in raw_title and len(raw_title) < 120:
         parts = raw_title.split(":", 1)
         raw_title, subtitle = parts[0].strip(), parts[1].strip()
+
+    publisher_meta = (meta["site_name"] or "WEB LINK EDITION").upper()
+    author = meta["author"] or meta["site_name"] or "Web Edition"
 
     return {
         "sourceFormat": "web",
         "title": raw_title,
         "subtitle": subtitle,
         "author": author,
-        "publisherMeta": "WEB LINK EDITION",
-        "pubDate": "",
+        "publisherMeta": publisher_meta,
+        "pubDate": meta["pub_date"] or "",
         "totalPages": max(1, synthetic_page - 1),
         "wordCount": sum(c["wordCount"] for c in chapters),
         "chapters": chapters,

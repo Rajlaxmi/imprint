@@ -5,27 +5,33 @@
    ========================================================================== */
 
 :root {
-  --measure: 36rem;
-  --left-rail-w: 16rem;
-  --right-rail-w: 22rem;
+  --body-size: 1.02rem;
+  --line-height: 1.62;
+  --measure: 39rem;
+  --left-rail-w: 17rem;
+  --right-rail-w: 24rem;
 }
 
-html[data-width="book"] { --measure: 36rem; }
-html[data-width="wide"] { --measure: 43rem; }
+/* Match exact crisp book-page density of the original screenshot */
+html[data-size="sm"] { --body-size: 0.94rem; --line-height: 1.56; }
+html[data-size="md"] { --body-size: 1.02rem; --line-height: 1.62; }
+html[data-size="lg"] { --body-size: 1.13rem; --line-height: 1.68; }
+html[data-size="xl"] { --body-size: 1.25rem; --line-height: 1.72; }
+
+html[data-width="book"] { --measure: 39rem; }
+html[data-width="wide"] { --measure: 47rem; }
 
 .workspace-layout {
-  max-width: 90rem;
+  max-width: 106rem;
   margin: 0 auto;
 }
 
 .reader-bar__inner {
-  max-width: 90rem;
-  margin: 0 auto;
   gap: 0.5rem;
 }
 
 .book-stage {
-  padding: 2.35rem 1.75rem 3.8rem;
+  padding: 2.35rem 2rem 3.8rem;
 }
 
 /* 1. Sticky Top Reader Bar — Compact & Never Clips Dropdowns */
@@ -261,9 +267,63 @@ html[data-width="wide"] { --measure: 43rem; }
   overflow-wrap: break-word;
 }
 
-.ch-menu-item__title,
-.toc-link__title,
+/* Tight print-book paragraph & blockquote vertical rhythm matching original */
+.chapter-section p {
+  text-indent: 1.55em;
+  line-height: var(--line-height);
+}
+
+.chapter-section p + p {
+  margin-top: 0.22em;
+}
+
+.chapter-section sub,
+.chapter-section sup:not(.note-ref) {
+  font-size: 0.75em;
+  line-height: 0;
+}
+
+.chapter-section code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 0.05em 0.28em;
+  border-radius: 3px;
+  background: var(--bg-subtle);
+}
+
+.prose-quote {
+  margin: 1.05em 0;
+  padding: 0.15em 0 0.15em 1.25em;
+  line-height: 1.56;
+}
+
+.section-ornament {
+  margin: 1.9rem 0;
+}
+
+.toc-link {
+  padding: 0.42rem 0.5rem;
+}
+
+.toc-link__title {
+  font-size: 0.78rem;
+  line-height: 1.24;
+  overflow-wrap: break-word;
+  hyphens: none;
+}
+
 .toc-link__sub {
+  font-size: 0.68rem;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  hyphens: none;
+}
+
+.ch-menu-item__title {
   overflow-wrap: break-word;
   hyphens: none;
 }
