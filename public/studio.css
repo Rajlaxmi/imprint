@@ -86,10 +86,111 @@ html[data-width="wide"] { --measure: 47rem; }
   }
 }
 
-@media (max-width: 60rem) {
-  .brand-pill {
-    display: none;
+@media (max-width: 74rem) {
+  .brand-pill,
+  .ch-picker {
+    display: none !important;
   }
+}
+
+/* Permanent Save & Cloud Sync Modal */
+.save-sync-modal {
+  max-width: 31rem;
+}
+
+.save-sync-card {
+  background: var(--bg-elevated, #faf6ec);
+  border: 1px solid var(--rule, rgba(28, 25, 21, 0.14));
+  border-radius: 0.45rem;
+  padding: 0.78rem 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.save-sync-card__title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink, #1c1915);
+  margin: 0 0 0.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.save-sync-badge {
+  font-size: 0.66rem;
+  padding: 0.12rem 0.42rem;
+  border-radius: 999px;
+  background: rgba(25, 135, 84, 0.13);
+  color: #146c43;
+  font-weight: 600;
+}
+
+.save-sync-card__desc {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ink-muted, #5c5549);
+  margin: 0 0 0.55rem;
+}
+
+.save-sync-row {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.save-sync-input {
+  flex: 1 1 12rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.76rem;
+  padding: 0.42rem 0.58rem;
+  border: 1px solid var(--rule, rgba(28, 25, 21, 0.22));
+  border-radius: 0.35rem;
+  background: #fff;
+  color: #1c1915;
+}
+
+.save-sync-btn {
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 0.42rem 0.72rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--rule, rgba(28, 25, 21, 0.22));
+  background: #fff;
+  color: #1c1915;
+  cursor: pointer;
+}
+
+.save-sync-btn--primary {
+  background: var(--vermilion, #c92518);
+  border-color: var(--vermilion, #c92518);
+  color: #fff;
+}
+
+.save-sync-btn--primary:hover {
+  opacity: 0.92;
+}
+
+.save-sync-status {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  margin-top: 0.45rem;
+  color: var(--ink, #1c1915);
+}
+
+.save-sync-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  font-size: 0.77rem;
+  color: var(--ink-muted, #5c5549);
+  margin-top: 0.45rem;
+  cursor: pointer;
 }
 
 /* 2. Melville House Receipt Masthead — Exact Original 23rem Compact Width */

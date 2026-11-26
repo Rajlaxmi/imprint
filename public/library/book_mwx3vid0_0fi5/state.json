@@ -1,0 +1,195 @@
+{
+  "chapters": {
+    "chapter-1": {
+      "annotations": [
+        {
+          "id": "hl_mwx5ide2_vmms",
+          "start": null,
+          "end": null,
+          "quote": "van Leeuwenhoek",
+          "locLabel": "I · p. 2",
+          "color": "sky",
+          "note": "**Antonie van Leeuwenhoek** (1632–1723) was a Dutch textile merchant and self-taught scientist from Delft, widely regarded as the \"Father of Microbiology.\" Rather than using the blurry compound microscopes of his day, he perfected tiny, handcrafted single-lens microscopes capable of extraordinary magnification and optical clarity.\n\nIn the 1670s, van Leeuwenhoek trained one of his lenses on drops of lake and pond water and became the first human to see single-celled microorganisms—protozoa and bacteria—which he famously called *animalcules* (\"little animals\"). To his contemporaries, clear water had appeared empty; his instrument abruptly revealed an entire teeming ecosystem hiding in plain sight. (He went on to make similarly foundational observations of red blood cells, spermatozoa, and muscle fibers.)\n\nAaronson pairs van Leeuwenhoek with Galileo to argue that AI theorem proving—paired with formal Lean verification—is not just knocking down isolated puzzles, but functioning as a **new scientific instrument**. Just as the microscope and telescope suddenly raised humanity’s optical resolution onto worlds previously invisible or blurred, Aaronson sees these systems lifting the \"fog\" over the mathematical and complexity-theoretic universe—replacing decades of a slow \"drip-drip-drip of clues\" with a clear, high-resolution view of an entire \"new continent of mathematical truth.\"",
+          "source": "ai",
+          "modelLabel": "Gemini 4 Neon",
+          "promptQuestion": "who is this?",
+          "linkedHighlightId": null,
+          "createdAt": 1795673283914
+        }
+      ],
+      "chatMessages": [
+        {
+          "id": "msg_u_1795671498901_o04h",
+          "role": "user",
+          "content": "Find link to this proof",
+          "highlightQuote": "VP ≠ VNP",
+          "highlightLoc": "I · p. 1",
+          "notesCount": 0,
+          "createdAt": 1795671498901
+        },
+        {
+          "id": "msg_a_1795671535148_sfdr",
+          "role": "assistant",
+          "content": "In this passage, Aaronson is referring to near-simultaneous, Lean 4–formalized proofs of Valiant’s $\\mathrm{VP} \\neq \\mathrm{VNP}$ conjecture released on GitHub by both **Anthropic** and **OpenAI** on November 23–24, 2026. Here are direct links to both proofs, their formalizations, and Aaronson’s own prior write-up:\n\n* **Anthropic’s Proof (*VP ≠ VNP over every field*, Nov. 23, 2026)**\n  * **Paper (PDF):** [formal-math/vp-vnp/paper.pdf](https://github.com/anthropics/formal-math/blob/main/vp-vnp/paper.pdf)\n  * **Overview & Lean 4 Code:** [vp-vnp README](https://github.com/anthropics/formal-math/blob/main/vp-vnp/README.md) · [Solution.lean](https://github.com/anthropics/formal-math/blob/main/vp-vnp/Solution.lean) (in the [anthropics/formal-math](https://github.com/anthropics/formal-math) repository)\n  * *Scope:* Establishes superpolynomial arithmetic circuit lower bounds (including for border/approximate circuits) for the Hamiltonian cycle polynomial over every field and for the permanent outside characteristic 2.\n\n* **OpenAI’s Proofs (Nov. 23–24, 2026)**\n  * **Initial Preprint (PDF, Nov. 23):** [VP and VNP are different](https://github.com/openai/math/blob/main/preprints/VP-and-VNP-are-different-November-23-2026/paper.pdf) (noting an internal derivation date of Nov. 6)\n  * **Expanded / Subsuming Preprints (PDFs, Nov. 24):** [Paths, trees and grids separate Valiant's hierarchy](https://github.com/openai/math/blob/main/preprints/Paths-trees-and-grids-separate-Valiants-hierarchy-November-24-2026/paper.pdf) (separating $\\mathrm{VF} \\subsetneq \\mathrm{VBP} \\subsetneq \\mathrm{VP} \\subsetneq \\mathrm{VNP}$ via state sums on grids) and [Circuit lower bounds for Hamiltonian cycle and the permanent](https://github.com/openai/math/blob/main/preprints/Circuit-lower-bounds-for-Hamiltonian-cycle-and-the-permanent-November-24-2026/paper.pdf)\n  * **Lean 4 Code & Scope:** [ClassSeparation.lean](https://github.com/openai/math/blob/main/lean/OAI/Computability/VPVNP/ClassSeparation.lean) · [Formalization Summary (Family 379)](https://github.com/openai/math/blob/main/lean/docs/379.md)\n\n* **Aaronson’s Linked Commentary:** The inline link in this sentence points to his November 24 post, [*I've been drinking wine in my kitchen*](https://scottaaronson.blog/?p=10362), which unpacks both releases in greater detail.\n\nNotably, OpenAI’s November 24 $\\mathrm{VP} \\neq \\mathrm{VNP}$ papers belong to the exact same \"Euclidean tensor geometry\" result family that yielded the $\\omega = 9/4$ matrix multiplication lower bound and the $N(\\log N)^{1/2+o(1)}$ Fourier transform lower bound that arrive before and during dessert later in this chapter.",
+          "highlightQuote": "",
+          "highlightLoc": "Gemini 4 Neon",
+          "notesCount": 0,
+          "sources": [
+            {
+              "title": "scottaaronson.blog",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHuqpUo0cY5Lme0EsBdg1cYKvkUczVy_PD3qYeyRYBoPbOhIJ-nzjyknEdoaoEtWrGdFtfZODv8OKtcg_DvBJLBwqGGdz9jCtSy0vEJeq_VsIqJvWTk2FRbvQ=="
+            },
+            {
+              "title": "notebookcheck.net",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFHeeMZHOAWXc2xo9IzQZd6nkepWBqpeTbk3-OLpu75w5ELlglrEO06j0Ihrgjy31oO0OJQZcA4ZpFeTJFxKeHnaKU_Evvm9Obd3sodWNIdHJ-ORDrn9mdC2fnrQKCVOXFDcpL-GiINn1LT-TWN7mXn0ZMa-i6F78uVVKNVpIpN1Ozz-brgso1HgFXWhNvNJF7OW8sO52e1gyzKLY77ppGIwVZw4FZpUG0W2PtIh_BBoJ5QNQkN"
+            },
+            {
+              "title": "thedefiant.io",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEA-28e51zOfHu3sRBVRtHIDZi13UQxyprANdvDl1s73vWIifjQ-eEHBhbJnJoMPvQg60TkrJ4gvFg0qc9YL3Blmm9bH6soKKz9tHesKmF4KNnh5TUgUfxucjLDtRy2uJH3jVIuJuUpzDupOpBv640sMeMkSeUx67hmd6Y4TLWpZDKMnqHx9HQRPQ=="
+            },
+            {
+              "title": "github.com",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEQmtBLBo5cZK-jKjRs8SWscFAhffcbjPCoYBzvc5laFzcd7Bdc09-ve2_vQsdNRVBQ4sJaXYRzd2N0YJ15jiajMHEzCsfTw3bjLq1RhNXuyQ0Bv3fvMDqysyI28QeNKnIDWMzmia83EWg3iiRCWJ6KikKq7DQq1HIuqw=="
+            },
+            {
+              "title": "reddit.com",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFN-_CvSaCemkb7s3wopvbTq4qdBIzju5qKLaytXVAzCIfqD3uqBaX8_6YspcmRC5nlwUMvksuorfhXZ6l5pXOas2aw41J2qEdIaAv_mbMXehIXQ42tIi6RW5H0ltxv3zCavaIN0u2tPU4wtwed1tQ2-n6G0OSrBKm_61iCd_zsz6eRpNmpEqXu2JcoOwsQRIe3EtThVcQ="
+            },
+            {
+              "title": "github.com",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEb141TDPNQxEkEa7hIGWpWAq23LzXpxRHkN9vn4OcslPuyXFPKM5dsGmogGtgSnL3pJLhe_bCsDSV1DBKIGsD6yv_RpZhRMKa0dEhIbekZwKIt0pLdZRkk1khMT1BUsNT1Xz11Swd1nvitQ8Qg8k8IFlpa-LM6714gjQ=="
+            }
+          ],
+          "searchQueries": [
+            "OpenAI Anthropic proof VP VNP",
+            "scottaaronson.blog 10362 VP VNP",
+            "site:github.com/anthropics/formal-math vp-vnp",
+            "site:github.com/openai/math \"Valiant\" OR \"permanent\" OR \"VP-and-VNP\"",
+            "site:github.com/openai/math \"Paths-trees-and-grids-separate-Valiants-hierarchy\" OR \"Paths, trees and grids separate Valiant\""
+          ],
+          "createdAt": 1795671535148
+        },
+        {
+          "id": "msg_u_1795672086266_myda",
+          "role": "user",
+          "content": "what is the significance of this? What are the current matmul implementation complexity?",
+          "highlightQuote": "we saw that OpenAI claims to prove that ω, the exponent of matrix multiplication, is exactly 9/4—a lower bound (!!), matching the upper bound that OpenAI proved in the great Mathocalypse drop of October 6.",
+          "highlightLoc": "I · p. 1",
+          "notesCount": 1,
+          "createdAt": 1795672086266
+        },
+        {
+          "id": "msg_a_1795672120845_hh84",
+          "role": "assistant",
+          "content": "### 1. Why $\\omega = 9/4$ Is Such a Shock\n\nIn the highlighted passage, Aaronson flags two distinct breakthroughs wrapped into OpenAI’s November 24 preprint, [*The matrix multiplication exponent is nine fourths*](https://github.com/openai/math/blob/main/preprints/The-matrix-multiplication-exponent-is-nine-fourths-November-24-2026/paper.pdf):\n\n* **Settling a 57-year-old mystery—and refuting $\\omega = 2$:** Since Volker Strassen shocked the field in 1969 by beating the schoolbook $O(n^3)$ method with $O(n^{\\log_2 7}) \\approx O(n^{2.807})$, theoretical computer scientists spent decades inching the upper bound down (reaching $\\omega < 2.371177$ in August 2026 before OpenAI’s October \"Mathocalypse\" leap to $\\omega \\le 9/4$). Many theorists long conjectured that the true limit was $\\omega = 2$, meaning matrices could be multiplied in nearly the $n^2$ time needed just to read them. Pinning the exact exponent at a clean rational number—$9/4 = 2.25$ over every field—vindicates Aaronson’s skepticism and proves that multiplying $n \\times n$ matrices inherently requires an extra factor of $n^{1/4}$ beyond input/output size.\n* **Breaking the lower-bound barrier (`!!`):** Finding an *upper bound* only requires constructing one clever algorithm; proving a *lower bound* ($\\omega \\ge 9/4$) means proving that **no possible algorithm** in the model can do better. OpenAI’s paper argues that any formal arithmetic circuit multiplying two $n \\times n$ matrices requires at least $\\lceil n^{9/4}/2 \\rceil$ nonscalar multiplications or divisions, even when additions are free. Historically, proving super-quadratic algebraic lower bounds looked almost as intractable as $\\mathrm{P} \\neq \\mathrm{NP}$—which is why Aaronson treats this (alongside $\\mathrm{VP} \\neq \\mathrm{VNP}$) as a sign that $\\mathrm{P} \\neq \\mathrm{NP}$ itself is now within reach.\n* **Important scope caveat:** The lower bound applies to exact *formal arithmetic circuits* (algebraic identities over field operations), not arbitrary bit-level or Word RAM algorithms. Furthermore, OpenAI’s accompanying Lean 4 formalization currently covers division-free arithmetic circuits, while independent human vetting of the full lower-bound proof is still underway.\n\n---\n\n### 2. Current Practical Matmul Implementation Complexity\n\nDespite this theoretical earthquake, **real-world matrix multiplication will not suddenly get faster**, and the November 24 paper is a *speed limit* rather than a faster algorithm:\n\n* **Production libraries (GPUs & CPUs): $O(n^3)$.** Virtually all real-world AI training, inference, and scientific computing libraries—NVIDIA’s **cuBLAS** (and Tensor Cores), **Intel MKL**, **OpenBLAS**, and **LAPACK**—use the classical **$O(n^3)$** schoolbook algorithm. Its simple, predictable memory access patterns allow aggressive cache tiling, SIMD vectorization, and massive parallelism, making it overwhelmingly faster in wall-clock time than asymptotically superior methods.\n* **Practical sub-cubic niche: Strassen’s $O(n^{2.807})$.** Strassen’s algorithm (and Winograd’s variant) is essentially the only general dense sub-cubic algorithm ever used in practice, typically showing speedups only for very large matrices (often $n$ in the thousands) or high-precision arithmetic. Modern GPU stacks rarely use it by default because it adds extra additions, requires extra workspace memory, disrupts hardware-friendly tiling, and degrades floating-point numerical stability.\n* **Why $\\omega \\le 9/4$ is \"galactic\":** Like the Coppersmith–Winograd family before it, OpenAI’s October $\\omega \\le 9/4$ upper bound relies on asymptotic tensor degenerations whose hidden constant factors are astronomically large (and which suffer from severe floating-point instability). Even explicit algorithms derived from the $9/4$ upper bound would only beat $O(n^3)$ or Strassen at matrix dimensions far larger than any physical computer could store. *(The main practical escape from $O(n^3)$ today is exploiting structure—such as sparsity, low-rank approximations, or FFT-based methods for Toeplitz/circulant matrices—rather than lowering $\\omega$ for general dense matrices.)*",
+          "highlightQuote": "",
+          "highlightLoc": "Gemini 4 Neon",
+          "notesCount": 0,
+          "sources": [
+            {
+              "title": "mlq.ai",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFmvgQ4ih8xnLFQWWBzFQMWgt0UJnIn_7qvapS2vrAUQn9jUdIRuuNjKBZY-38JfZBq7g5-c0mc4YwUs8wd2wtZz9u3DqMTjZGPD16HN8qMEdsNehs7znBCjLqz2IQpFaQjEuZWPypB-m6fFA1N3KoVsKEdCuos6fQe6HmM9ZcafMF0hSjbQyNvmCcnai3UhCNV"
+            },
+            {
+              "title": "unite.ai",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQF2CEkxD4yD7fqxL4z5O7nZJWeOLmkdJ-f-w7wbJ4IFu7AjAby5f7gzbQCf8UlouZglwrSWdE9dySQXW7kTqpFfLJLezef-hdddl8UH45Sq-XEDNB__KYO2KFcC8a3uECc46wAIe9uF5BxHZ03y2dzAp7isNNrCF7-InsyiqddBwsV6BZ0xLA=="
+            },
+            {
+              "title": "reddit.com",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGP4DXD2MO4Hs_KE8_iUogskzme1_uOTEcD5APjBbUf7YSL3qQcJtc4ezKg-8mAe3T1r0J8oNYQjKofO1tJfSTArxgc9PD7Yb87rzTNJVOLd0VdV4b5NnTNqWdAm52mGIz3S7lPpLcfwZAPEz6jcGQ9XJ_C7F9ztas4tWwghJaZBD5v21i7OvtORXxNCQGWXtSvXCuYADxGFbL49oDT"
+            },
+            {
+              "title": "thedefiant.io",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEzRprYW4X5mkLOVS2aVCZZOoXi07n-hmp4B0nvIebF7YmvEFIdyp3u0BaSBe0Hb020IkZEB9HiYcAARBHdh1jSTuZe59kpBs7IQjcmf6jhVSDHTfR_nvFJWwy5yyImSN0VHatYda3vtV2vBNR-T13qQ0FATDlzi7uouY_pL2LyZ9rVM3_-HPRZTmxvo3XnEnw="
+            },
+            {
+              "title": "youtube.com",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFG0c-uZA7mV914CvcOZN7sZt9srAh5W4w27Zqim1ERg27jJ-82pQceJhjQ6DF9mu1FdSM5t812oZPx7rQPuk7LTwDwb6Wor89ZzHGx3M6-1BItt9S_HQfRdw_g1SWRSaI="
+            },
+            {
+              "title": "cryptobriefing.com",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQF2qH1cjrmAXjJg1RvE8OCfEf_Ddja5tZcDtylInGg-KJZ2f5Z0yF8w3sia5A99GHrUTuEzsIQXO51X7gHYsvMH1SpO6xUbYYeLPwR-x8SHARKmYs0T1hKEWt73KNvv0Z9kLfPF8VPSdUy96SsNINpYoDv1IsW-EB6QQQ=="
+            }
+          ],
+          "searchQueries": [
+            "openai matrix multiplication exponent 9/4 october 6 2026",
+            "\"The-matrix-multiplication-exponent-is-nine-fourths\" openai",
+            "\"matrix multiplication\" practical implementation complexity strassen cublas galactic algorithm"
+          ],
+          "createdAt": 1795672120845
+        },
+        {
+          "id": "msg_u_1795673079400_1u7g",
+          "role": "user",
+          "content": "who is this?",
+          "highlightQuote": "van Leeuwenhoek",
+          "highlightLoc": "I · p. 2",
+          "notesCount": 1,
+          "createdAt": 1795673079400
+        },
+        {
+          "id": "msg_a_1795673093886_laao",
+          "role": "assistant",
+          "content": "**Antonie van Leeuwenhoek** (1632–1723) was a Dutch textile merchant and self-taught scientist from Delft, widely regarded as the \"Father of Microbiology.\" Rather than using the blurry compound microscopes of his day, he perfected tiny, handcrafted single-lens microscopes capable of extraordinary magnification and optical clarity.\n\nIn the 1670s, van Leeuwenhoek trained one of his lenses on drops of lake and pond water and became the first human to see single-celled microorganisms—protozoa and bacteria—which he famously called *animalcules* (\"little animals\"). To his contemporaries, clear water had appeared empty; his instrument abruptly revealed an entire teeming ecosystem hiding in plain sight. (He went on to make similarly foundational observations of red blood cells, spermatozoa, and muscle fibers.)\n\nAaronson pairs van Leeuwenhoek with Galileo to argue that AI theorem proving—paired with formal Lean verification—is not just knocking down isolated puzzles, but functioning as a **new scientific instrument**. Just as the microscope and telescope suddenly raised humanity’s optical resolution onto worlds previously invisible or blurred, Aaronson sees these systems lifting the \"fog\" over the mathematical and complexity-theoretic universe—replacing decades of a slow \"drip-drip-drip of clues\" with a clear, high-resolution view of an entire \"new continent of mathematical truth.\"",
+          "highlightQuote": "",
+          "highlightLoc": "Gemini 4 Neon",
+          "notesCount": 0,
+          "sources": [],
+          "searchQueries": [],
+          "createdAt": 1795673093886
+        },
+        {
+          "id": "msg_u_1795673330636_ybp5",
+          "role": "user",
+          "content": "Is there any book on van Leeuwenhoek or his thoughts on curiousity and exploration?",
+          "highlightQuote": "",
+          "highlightLoc": "",
+          "notesCount": 1,
+          "createdAt": 1795673330636
+        },
+        {
+          "id": "msg_a_1795673381688_deth",
+          "role": "assistant",
+          "content": "Van Leeuwenhoek never wrote a formal book or philosophical treatise—his entire output consists of over 350 lively, diaristic Dutch letters, mostly sent to the Royal Society in London. Yet his mindset toward curiosity shines right through them. In a famous letter of June 12, 1716, he summed up his lifelong drive: *\"My work, which I've done for a long time, was not pursued in order to gain the praise I now enjoy, but chiefly from a craving after knowledge, which I notice resides in me more than most other men.\"* Elsewhere, he offered a pragmatic maxim of exploration: *\"a man who wants to find new things should not rely on one observation but look many times.\"*\n\nIf you want to explore his life, curiosity, and how new instruments reshape what humanity can see—building directly on your note about Aaronson’s analogy—these are the standout books and primary sources:\n\n* ***Eye of the Beholder: Johannes Vermeer, Antoni van Leeuwenhoek, and the Reinvention of Seeing*** by **Laura J. Snyder** (W. W. Norton, 2015; [author's book page](https://www.laurajsnyder.com/))\n  * *Best for the \"new instrument\" theme:* Snyder pairs van Leeuwenhoek with his Delft neighbor Vermeer (who experimented with the *camera obscura*) to explore the 17th-century clarion call to *\"See for yourself!\"*. It reads like a novel while digging deeply into how lenses didn't just uncover hidden facts—they forced people to learn *how* to perceive an unfamiliar reality.\n\n* ***Myriad, Microscopic and Marvellous: The World of Antoni van Leeuwenhoek*** by **Geertje Dekkers** (Reaktion Books / University of Chicago Press, English ed. Dec. 2025; originally published in Dutch as *Veel, klein en curieus* / *\"Many, Small and Curious\"*)\n  * *Best modern biography:* Concise, richly illustrated, and grounded in municipal records and his correspondence, Dekkers focuses squarely on how van Leeuwenhoek’s restless curiosity—leading him to put everything from rainwater and pepper infusions to his own tooth plaque under his lenses—and his peculiar ideas propelled natural science into uncharted territory.\n\n* ***Antony van Leeuwenhoek and His \"Little Animals\"*** by **Clifford Dobell** (1932; [free to read on the Internet Archive](https://archive.org/details/antonyvanleeuwen00dobe))\n  * *Best for van Leeuwenhoek’s own voice:* Written by a microbiologist who spent 25 years learning 17th-century Dutch to translate the original manuscripts faithfully, this classic blends biography with extensive excerpts of van Leeuwenhoek’s actual letters—letting you experience his unfiltered astonishment firsthand.\n\n* **Shorter & Primary Online Resources:**\n  * **[Lens on Leeuwenhoek](https://lensonleeuwenhoek.net/):** A comprehensive public archive cataloging his letters, chronology, and English translations from the multi-volume *Alle de Brieven / Collected Letters*.\n  * **Nick Lane, [*The unseen world: reflections on Leeuwenhoek (1677) 'Concerning little animals'*](https://doi.org/10.1098/rstb.2014.0344)** (*Philosophical Transactions of the Royal Society B*, 2015): A crisp, open-access essay by an evolutionary biochemist reflecting on how van Leeuwenhoek’s colloquial letters conceal a \"startlingly original experimental mind\" whose core questions still animate modern biology.\n\n*(And if you ever want a punchy, romanticized appetizer, Chapter 1 of Paul de Kruif’s 1926 classic **Microbe Hunters** is famous for portraying van Leeuwenhoek as the archetype of the obsessive, self-taught explorer.)*",
+          "highlightQuote": "",
+          "highlightLoc": "Gemini 4 Neon",
+          "notesCount": 0,
+          "sources": [
+            {
+              "title": "lensonleeuwenhoek.net",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFRbnJVKDxiaCngL2Py2oTWutOeooixCW26LH710gJQBqdvZDTFjJPPm5N9h0hx7QkNDg9ZW0lOdTyY5oWGX5AYMvXo-Kvb0Tknrnj6_WUFRtObWGDQll9oh5UlwdbXqQpj2w=="
+            },
+            {
+              "title": "nih.gov",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGwVrn4_RNDwCFM8XT8iC057JGsGZO2JlKHjGPci1qjyA_wjtib4y4dElU8Kcd7nXQw3YIGijVJJi9bVthaoPU4AHG5QprtQWtF5_P-PPFkLlOfbfwTE7Zil_cDHI4fh0idTLQ8hYs="
+            },
+            {
+              "title": "lensonleeuwenhoek.net",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG2E_Tuiy10j-0t7CmZcLe1MxmM4REQAm7MCxXESlKD1isAkHFeSmTGCYIdkEOkANjB5v-UusxugKjXfxt_wCxGeTYTYzHEBY26fgd3OagBQVDxmvL49QkqWnYClBS9tpu_xQ=="
+            },
+            {
+              "title": "the-low-countries.com",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG9_AFl94_Bzvi-WU5oQoGr_QrjDEfjOalZUri9IT3Y4Q--xUtb6M2EyzQL_3hOsk-6984TKm0uncwRUdz5of6Xi4jzNgrbXn6n3XL5vJEpuJbtIsNGKrZTsxPJtn8qIWPPq8nzUTRhzusJRc87Iovjr_rDorb5jz4pKOVEpgOdWKqkGiBzeUi5lesEbz177IdlrsJ6gs6RDVPOq9EuVWK7Ylbxg7E="
+            },
+            {
+              "title": "laurajsnyder.com",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGl_x9OwPOj6Z2cd74WfweseWBOiUMiW5cLYZbIgu-B2tC0PEKoJTcqrF_FHS33Y_jrVu-tr8eFUFT3gJ9g1-iIEkMEtNAUcRxhrVC5cVxIOjBzd072sK-mdpmO2BDh9gxtopHPy3ZXL_1D_o0wKE51-zdWVu99"
+            },
+            {
+              "title": "lensonleeuwenhoek.net",
+              "uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE6XPn4aojvZ1fbGoKRu0O01uB5rfOTjHqlZ-toC8Pb7a45Mm-dlcQCTNtZOFXr0D0uXuAuyFVaJd14ozYE_FMfva98Rzjqs_r32Ew_dXUviQCD7Eo0b5PHJPi-o2zNBkuaKy3llhvA9Q=="
+            }
+          ],
+          "searchQueries": [
+            "site:archive.org \"Antony van Leeuwenhoek and his Little animals\" Dobell",
+            "recent biography Antonie van Leeuwenhoek 2020 2026",
+            "\"lensonleeuwenhoek.net\" \"letters\"",
+            "\"Lens on Leeuwenhoek\" letters",
+            "van Leeuwenhoek quotes curiosity Royal Society letters"
+          ],
+          "createdAt": 1795673381688
+        }
+      ]
+    }
+  }
+}

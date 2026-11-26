@@ -1,0 +1,267 @@
+{
+  "id": "book_mwx3vid0_0fi5",
+  "title": "Holy Shit Holy Shit Holy Shit Holy Shit",
+  "subtitle": "",
+  "author": "Scott Aaronson",
+  "publisherMeta": "SHTETL-OPTIMIZED",
+  "pubDate": "NOV 2026",
+  "balanceDue": "UNSETTLED PROOFS",
+  "tagline": "“I NEVER EXPECTED THIS CHALLENGE TO BE ALL THAT MUCH EASIER THAN P ≠ NP.”",
+  "sourceFormat": "web",
+  "sourceUrl": "https://scottaaronson.blog/?p=10379",
+  "originalFilename": "linked_book",
+  "totalPages": 4,
+  "wordCount": 1216,
+  "createdAt": 1795670537783,
+  "updatedAt": 1795672705749,
+  "job": {
+    "status": "ready",
+    "readable": true,
+    "comicMode": "all",
+    "percent": 100,
+    "phase": "Complete — Full text, SVG concept diagrams & Story Comics ready.",
+    "chaptersExtracted": 1,
+    "completedSteps": 4,
+    "totalSteps": 4,
+    "comicsDone": 2,
+    "comicsTotal": 2
+  },
+  "chapters": [
+    {
+      "slug": "chapter-1",
+      "num": 1,
+      "chapterLabel": "Chapter One",
+      "title": "Holy Shit Holy Shit Holy Shit Holy Shit",
+      "shortTitle": "Mathematical Singularity",
+      "subtitle": "",
+      "folioStart": 1,
+      "folioEnd": 4,
+      "wordCount": 1216,
+      "receiptItem": "CHAPTER ONE",
+      "receiptFolio": "PP. 01–04",
+      "receiptNotes": "NOS. 01–02",
+      "receiptTagline": "“A WHOLE NEW CONTINENT OF MATHEMATICAL TRUTH”",
+      "aiThemes": "Scott Aaronson reflects on an unprecedented cascade of verified computer science and mathematical breakthroughs produced overnight by AI labs like OpenAI and Anthropic. Over an astonishment-filled dinner, theoretical computer scientists witness machine-verified Lean proofs to long-standing open problems: VP ≠ VNP, the Riemann Hypothesis, a settled matrix multiplication exponent ω, an improved Fourier Transform gate complexity, and QIP(2) = PSPACE. Aaronson argues that P ≠ NP is imminent, warning skeptics that formal Lean verification renders denial obsolete. Beyond the pure intellectual revelation, he addresses looming cryptographic vulnerabilities that could break deployed cryptosystems, urging perspective over financial panic as humanity enters the threshold of an AI singularity.",
+      "epigraphs": [],
+      "sections": [
+        {
+          "id": "ch1-section-1",
+          "num": 1,
+          "roman": "I",
+          "startParagraphIndex": 0,
+          "pageStart": 1,
+          "pageEnd": 3,
+          "title": "A Continent of Mathematical Truth",
+          "subtitle": "Historic mathematical conjectures fall in rapid succession",
+          "takeawayLead": "Conjectures fall",
+          "takeaway": "AI models are resolving decades-old complexity barriers overnight, replacing incremental human progress with formal proofs of foundational theorems.",
+          "quote": "It’s now obvious that we’ll be getting, not one-off solutions to this or that complexity question, but a whole new continent of mathematical truth, one that we’d previously only glimpsed through fog.",
+          "diagram": {
+            "heading": "THE ACCELERATION OF DISCOVERY",
+            "box1": {
+              "title": "DECIMAL BARRIERS",
+              "sub": "Decades of human stagnation"
+            },
+            "box2": {
+              "title": "AI PROOF DUMPS",
+              "sub": "Rapid GitHub paper uploads"
+            },
+            "box3": {
+              "title": "FORMAL TRUTHS",
+              "sub": "VP ≠ VNP and beyond"
+            },
+            "footer": "Theoretical computer science enters an era of machine revelation."
+          },
+          "comicSpec": {
+            "centerBubble": "A whole new continent of mathematical truth!",
+            "centerScene": "Scott Aaronson and dinner guests stare wide-eyed at open laptops and phones around a dining table cluttered with dessert plates.",
+            "topLeftScene": "Strassen's matrix exponent paper from the late 1960s yellowing on a dusty academic shelf.",
+            "topLeftLabel": "1. Decades in Fog",
+            "topRightScene": "GitHub notifications and Lean verification logs streaming continuously across dual computer monitors.",
+            "topRightLabel": "3. GitHub Dumps",
+            "bottomRightScene": "A silhouette of the letters P versus NP looming dramatically like a towering mountain peak.",
+            "bottomRightLabel": "4. P vs NP Near",
+            "centerBeatLabel": "2. Dinner Shocks"
+          },
+          "beats": [
+            "1. Decades in Fog",
+            "2. Dinner Shocks",
+            "3. GitHub Dumps",
+            "4. P vs NP Near"
+          ],
+          "comicUrl": "library/book_mwx3vid0_0fi5/comics/ch1_sec1.jpg?v=1795671037261",
+          "comicStatus": "ready",
+          "enriched": true
+        },
+        {
+          "id": "ch1-section-2",
+          "num": 2,
+          "roman": "II",
+          "startParagraphIndex": 9,
+          "pageStart": 3,
+          "pageEnd": 4,
+          "title": "Living on the Singularity Rollercoaster",
+          "subtitle": "Lean certificates, cryptographic threats, and an uncertain utopia",
+          "takeawayLead": "The singularity arrives",
+          "takeaway": "Machine-checked Lean certificates eliminate denialism, heralding cryptographic disruption and the chaotic opening tremors of an AI singularity.",
+          "quote": "Right now—this past week—is very much like I would’ve always imagined the beginning of an AI singularity to look and feel like.",
+          "diagram": {
+            "heading": "CONFRONTING THE AI SINGULARITY",
+            "box1": {
+              "title": "LEAN CERTIFICATES",
+              "sub": "Undeniable formal proofs"
+            },
+            "box2": {
+              "title": "CRYPTO UPHEAVAL",
+              "sub": "Algorithms break security"
+            },
+            "box3": {
+              "title": "THE ROLLERCOASTER",
+              "sub": "Living through singularity"
+            },
+            "footer": "Existential wonder and cryptographic chaos collide as AI ascends."
+          },
+          "comicSpec": {
+            "centerBubble": "The beginning of an AI singularity!",
+            "centerScene": "Scott looks out a sunlit window the morning after Thanksgiving dinner, balancing sheer intellectual awe against existential gravity.",
+            "topLeftScene": "A computer terminal blinking with a verified Lean certificate stamping checkmarks on Millennium problems.",
+            "topLeftLabel": "1. Verified Proofs",
+            "topRightScene": "A digital padlock cracking open over glowing cryptographic keys and Bitcoin wallet symbols.",
+            "topRightLabel": "3. Crypto Cracking",
+            "bottomRightScene": "A family embracing warmly at a Thanksgiving table as a giant roller coaster car ascends in the background.",
+            "bottomRightLabel": "4. The Ride Begins",
+            "centerBeatLabel": "2. Morning After"
+          },
+          "beats": [
+            "1. Verified Proofs",
+            "2. Morning After",
+            "3. Crypto Cracking",
+            "4. The Ride Begins"
+          ],
+          "comicUrl": "library/book_mwx3vid0_0fi5/comics/ch1_sec2.jpg?v=1795671046967",
+          "comicStatus": "ready",
+          "enriched": true
+        }
+      ],
+      "paragraphs": [
+        {
+          "type": "p",
+          "html": "<span class=\"folio-marker\" data-page=\"1\" title=\"Page 1\">p. 1</span>I feel like my previous posts (and post titles), and podcasts, and talks, have failed to do full justice to the magnitude of what’s now happening, so I’m trying again.",
+          "page": 1
+        },
+        {
+          "type": "p",
+          "html": "Last night, we had friends and colleagues over for dinner. We were still trying to process OpenAI’s and Anthropic’s <a href=\"https://scottaaronson.blog/?p=10362\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"prose-link\">proofs of VP ≠ VNP</a>—hot on the heels, obviously, of the Alpöge/Anthropic <a href=\"https://scottaaronson.blog/?p=10344\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"prose-link\">proof of the Riemann Hypothesis</a>, which already feels like last week’s news. But then before dessert was served, we saw that OpenAI claims to prove that <a href=\"https://github.com/openai/math/blob/main/preprints/The-matrix-multiplication-exponent-is-nine-fourths-November-24-2026/paper.pdf\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"prose-link\">ω, the exponent of matrix multiplication, is exactly 9/4</a>—a <strong>lower bound (!!)</strong>, matching the upper bound that OpenAI proved in the great Mathocalypse drop of October 6.",
+          "page": 1
+        },
+        {
+          "type": "p",
+          "html": "There are two separate shocks here. The first shock is that we now, finally, know the right answer to this central mystery of algorithms going back to the late 1960s, when <a href=\"https://en.wikipedia.org/wiki/Strassen_algorithm\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"prose-link\">Volker Strassen first showed that ω&lt;3</a> (he got ω≤log<sub>2</sub>7) … and that the true answer is actually a <em>rational</em> number (!). But the even bigger shock is that the AI was able to <em>prove</em> any lower bound of the form ω&gt;2. I never expected this challenge to be all that much easier than P ≠ NP.",
+          "page": 1
+        },
+        {
+          "type": "p",
+          "html": "Over the decades, I often heard colleagues express extreme confidence that ω=2, and I expressed skepticism whenever this came up—not because I had any strong argument for ω&gt;2, but just because I saw that there was no strong argument for ω=2 either. So, I’m glad to have been vindicated about <em>that</em>!",
+          "page": 1
+        },
+        {
+          "type": "p",
+          "html": "<span class=\"folio-marker\" data-page=\"2\" title=\"Page 2\">p. 2</span>But wait, there was more. During dessert, we saw <a href=\"https://github.com/openai/math/blob/main/preprints/The-logarithmic-exponent-of-finite-Fourier-transforms-November-24-2026/paper.pdf\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"prose-link\">another OpenAI release</a> proving that the true number of linear gates needed to compute the Fourier Transform is N (log N)<sup>1/2+o(1)</sup>. The upper bound here improves, not only over the O(N log N) that stood since the 1960s (i.e., the Fast Fourier Transform or FFT), but also over the O(N log<sup>0.9999999999999</sup> N) (give or take some 9’s) that OpenAI published back in the October 6 Mathocalypse. Again, though, the real shock here is that there’s also a <strong>matching lower bound (!!)</strong>. All these questions from the ancient days are now just getting … straight-up <em>answered</em>, rather than slowly illuminated with a drip-drip-drip of clues.",
+          "page": 2
+        },
+        {
+          "type": "p",
+          "html": "To give an idea of how much things have changed, the other day Yupan Liu put a <a href=\"https://arxiv.org/pdf/2611.31236\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"prose-link\">preprint on the arXiv proving that QIP(2) = PSPACE</a>—that is, quantum interactive protocols with only two messages have the full power of those with three, or any polynomial number. As recently as 2025, this would’ve considered been one of the top complexity results of the year, and the fact that Yupan had used AI to help achieve it would’ve been strange and wonderful. These days, I had to remind myself it had even happened, and the use of AI was so standard that it didn’t even raise an eyebrow.",
+          "page": 2
+        },
+        {
+          "type": "p",
+          "html": "It’s now obvious that we’ll be getting, not one-off solutions to this or that complexity question, but a whole new continent of mathematical truth, one that we’d previously only glimpsed through fog. Picture van Leeuwenhoek first training a microscope on pondwater, or Galileo first training his telescope on the stars. That might give you <em>some</em> idea of how our resolution into the complexity-theoretic universe, and the whole universe of mathematical truth beyond it, has now improved.",
+          "page": 2
+        },
+        {
+          "type": "p",
+          "html": "<span class=\"folio-marker\" data-page=\"3\" title=\"Page 3\">p. 3</span>All through last night, as OpenAI and Anthropic uploaded more files to their GitHub repositories—because that’s what they’re doing now, they don’t even bother to issue press releases anymore, they just upload papers—my guests and I sat at the dinner table with phones out and a laptop, wondering which shoe was going to drop next. It was as though the clouds had parted above Mount Sinai, and we were waiting for the next sentence uttered by the Holy One Himself.",
+          "page": 3
+        },
+        {
+          "type": "p",
+          "html": "I now feel in my bones, for the first time ever, that a proof of P ≠ NP is not far.",
+          "page": 3
+        },
+        {
+          "type": "p",
+          "html": "For all I care, despise the AI companies for bulldozing our garden. Or love them for opening a new vista, or anything in between. Just please don’t <em>deny</em> what’s happening. Now that the companies have repeatedly shown that they can back up their claims with Lean certificates, don’t be a raging doofus who seizes on some triviality (e.g., a minor discrepancy between the Lean and informal proofs, or unused sections of the Lean proof) to pretend that dozens of great open problems of math and theoretical computer science are not, in fact, getting solved. Because they <em>are</em> getting solved. It might take us years to <em>understand</em> the solutions, but my working assumption by this point is that any proof that comes directly from OpenAI or Anthropic is correct barring information to the contrary.",
+          "page": 3
+        },
+        {
+          "type": "p",
+          "html": "I can’t possibly put the matter better than one of my friends on Facebook:",
+          "page": 3
+        },
+        {
+          "type": "blockquote",
+          "html": "After years of crackpot “solutions” claiming Millennium Problems are solved, now that we have actual solutions, we have crackpot “refutations” claiming Millennium Problems are not solved. It is really poetic, in a way.",
+          "page": 3
+        },
+        {
+          "type": "p",
+          "html": "Along the way to so many lower bounds that we wondered whether ever we’d live to see, there will also, of course, be further shocking <em>upper</em> bounds: that is, ultimate barriers to lower bounds, also known as “algorithms.” And yes, some of those algorithms will break currently deployed cryptosystems.",
+          "page": 3
+        },
+        {
+          "type": "p",
+          "html": "<span class=\"folio-marker\" data-page=\"4\" title=\"Page 4\">p. 4</span>Because people have been hounding me about it: yes, I’m virtually certain, from multiple reliable sources, that the AI labs are now sitting on one or more bombshells in that area. <strong>However,</strong> until I either see details or hear directly from someone at a lab, I feel much, much less confident about the specific <em>nature</em> of those bombshells. I do not wish to be responsible for spreading unverified rumors. And I worry that exact statements of what was done may have been mangled in a game of Telephone.",
+          "page": 4
+        },
+        {
+          "type": "p",
+          "html": "I also, crucially, don’t want the cryptography part of the story to overshadow the intellectual enormity of what’s happening. If, in these days of long-prophesied revelation and wonders and terrors, your main worry is your Bitcoin wallet, then go somewhere else for rumors about whether or not ECDSA is broken or whatever. I don’t have what you’re looking for here.",
+          "page": 4
+        },
+        {
+          "type": "p",
+          "html": "Let me be clear: for those of my readers who celebrate, I believe that tomorrow would be a <em>superb</em> Thanksgiving to spend some quality time with your kids and parents and siblings and old friends.",
+          "page": 4
+        },
+        {
+          "type": "p",
+          "html": "Right now—this past week—is very much like I would’ve always imagined the beginning of an AI singularity to look and feel like. I just hope we’ll get lucky, and it will “merely” be a singularity for our little corner of the world that involves hard math problems.",
+          "page": 4
+        },
+        {
+          "type": "p",
+          "html": "At some point at dinner last night, Dana had a sneezing fit. So I said to her, I hope it isn’t a swarm of nanobots that’s come to infect us! But if it <em>is</em>, then I hope it’s the friendly kind, the kind that will usher us all into an AI utopia.",
+          "page": 4
+        },
+        {
+          "type": "p",
+          "html": "Now, of course, another morning has dawned, and we’re still here. May we find a world where we and our children will be happy to live at the bottom of this rollercoaster. May we work to make it so.",
+          "page": 4
+        }
+      ],
+      "endnotes": [
+        {
+          "uid": "en_u_mwx4pe9r_34aa",
+          "num": 1,
+          "html": "vp-vnp paper by anthropic: <a href=\"https://github.com/anthropics/formal-math/blob/main/vp-vnp/paper.pdf\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"prose-link\">https://github.com/anthropics/formal-math/blob/main/vp-vnp/paper.pdf</a>",
+          "rawText": "vp-vnp paper by anthropic: https://github.com/anthropics/formal-math/blob/main/vp-vnp/paper.pdf",
+          "page": 1,
+          "anchored": false,
+          "userAdded": true
+        },
+        {
+          "uid": "en_u_mwx51da0_xdkz",
+          "num": 2,
+          "html": "<h4 class=\"md-h4\">1. Why $\\omega = 9/4$ Is Such a Shock</h4><p>In the highlighted passage, Aaronson flags two distinct breakthroughs wrapped into OpenAI’s November 24 preprint, <a href=\"https://github.com/openai/math/blob/main/preprints/The-matrix-multiplication-exponent-is-nine-fourths-November-24-2026/paper.pdf\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"prose-link\">*The matrix multiplication exponent is nine fourths*</a>:</p><ul class=\"md-list\"><li><strong>Settling a 57-year-old mystery—and refuting $\\omega = 2$:</strong> Since Volker Strassen shocked the field in 1969 by beating the schoolbook $O(n^3)$ method with $O(n^{\\log_2 7}) \\approx O(n^{2.807})$, theoretical computer scientists spent decades inching the upper bound down (reaching $\\omega &lt; 2.371177$ in August 2026 before OpenAI’s October &quot;Mathocalypse&quot; leap to $\\omega \\le 9/4$). Many theorists long conjectured that the true limit was $\\omega = 2$, meaning matrices could be multiplied in nearly the $n^2$ time needed just to read them. Pinning the exact exponent at a clean rational number—$9/4 = 2.25$ over every field—vindicates Aaronson’s skepticism and proves that multiplying $n \\times n$ matrices inherently requires an extra factor of $n^{1/4}$ beyond input/output size.</li><li><strong>Breaking the lower-bound barrier (<code>!!</code>):</strong> Finding an <em>upper bound</em> only requires constructing one clever algorithm; proving a <em>lower bound</em> ($\\omega \\ge 9/4$) means proving that <strong>no possible algorithm</strong> in the model can do better. OpenAI’s paper argues that any formal arithmetic circuit multiplying two $n \\times n$ matrices requires at least $\\lceil n^{9/4}/2 \\rceil$ nonscalar multiplications or divisions, even when additions are free. Historically, proving super-quadratic algebraic lower bounds looked almost as intractable as $\\mathrm{P} \\neq \\mathrm{NP}$—which is why Aaronson treats this (alongside $\\mathrm{VP} \\neq \\mathrm{VNP}$) as a sign that $\\mathrm{P} \\neq \\mathrm{NP}$ itself is now within reach.</li><li><strong>Important scope caveat:</strong> The lower bound applies to exact <em>formal arithmetic circuits</em> (algebraic identities over field operations), not arbitrary bit-level or Word RAM algorithms. Furthermore, OpenAI’s accompanying Lean 4 formalization currently covers division-free arithmetic circuits, while independent human vetting of the full lower-bound proof is still underway.</li></ul><hr class=\"md-hr\" /><h4 class=\"md-h4\">2. Current Practical Matmul Implementation Complexity</h4><p>Despite this theoretical earthquake, <strong>real-world matrix multiplication will not suddenly get faster</strong>, and the November 24 paper is a <em>speed limit</em> rather than a faster algorithm:</p><ul class=\"md-list\"><li><strong>Production libraries (GPUs &amp; CPUs): $O(n^3)$.</strong> Virtually all real-world AI training, inference, and scientific computing libraries—NVIDIA’s <strong>cuBLAS</strong> (and Tensor Cores), <strong>Intel MKL</strong>, <strong>OpenBLAS</strong>, and <strong>LAPACK</strong>—use the classical <strong>$O(n^3)$</strong> schoolbook algorithm. Its simple, predictable memory access patterns allow aggressive cache tiling, SIMD vectorization, and massive parallelism, making it overwhelmingly faster in wall-clock time than asymptotically superior methods.</li><li><strong>Practical sub-cubic niche: Strassen’s $O(n^{2.807})$.</strong> Strassen’s algorithm (and Winograd’s variant) is essentially the only general dense sub-cubic algorithm ever used in practice, typically showing speedups only for very large matrices (often $n$ in the thousands) or high-precision arithmetic. Modern GPU stacks rarely use it by default because it adds extra additions, requires extra workspace memory, disrupts hardware-friendly tiling, and degrades floating-point numerical stability.</li><li><strong>Why $\\omega \\le 9/4$ is &quot;galactic&quot;:</strong> Like the Coppersmith–Winograd family before it, OpenAI’s October $\\omega \\le 9/4$ upper bound relies on asymptotic tensor degenerations whose hidden constant factors are astronomically large (and which suffer from severe floating-point instability). Even explicit algorithms derived from the $9/4$ upper bound would only beat $O(n^3)$ or Strassen at matrix dimensions far larger than any physical computer could store. <em>(The main practical escape from $O(n^3)$ today is exploiting structure—such as sparsity, low-rank approximations, or FFT-based methods for Toeplitz/circulant matrices—rather than lowering $\\omega$ for general dense matrices.)</em></li></ul>",
+          "rawText": "### 1. Why $\\omega = 9/4$ Is Such a Shock\n\nIn the highlighted passage, Aaronson flags two distinct breakthroughs wrapped into OpenAI’s November 24 preprint, [*The matrix multiplication exponent is nine fourths*](https://github.com/openai/math/blob/main/preprints/The-matrix-multiplication-exponent-is-nine-fourths-November-24-2026/paper.pdf):\n\n* **Settling a 57-year-old mystery—and refuting $\\omega = 2$:** Since Volker Strassen shocked the field in 1969 by beating the schoolbook $O(n^3)$ method with $O(n^{\\log_2 7}) \\approx O(n^{2.807})$, theoretical computer scientists spent decades inching the upper bound down (reaching $\\omega < 2.371177$ in August 2026 before OpenAI’s October \"Mathocalypse\" leap to $\\omega \\le 9/4$). Many theorists long conjectured that the true limit was $\\omega = 2$, meaning matrices could be multiplied in nearly the $n^2$ time needed just to read them. Pinning the exact exponent at a clean rational number—$9/4 = 2.25$ over every field—vindicates Aaronson’s skepticism and proves that multiplying $n \\times n$ matrices inherently requires an extra factor of $n^{1/4}$ beyond input/output size.\n* **Breaking the lower-bound barrier (`!!`):** Finding an *upper bound* only requires constructing one clever algorithm; proving a *lower bound* ($\\omega \\ge 9/4$) means proving that **no possible algorithm** in the model can do better. OpenAI’s paper argues that any formal arithmetic circuit multiplying two $n \\times n$ matrices requires at least $\\lceil n^{9/4}/2 \\rceil$ nonscalar multiplications or divisions, even when additions are free. Historically, proving super-quadratic algebraic lower bounds looked almost as intractable as $\\mathrm{P} \\neq \\mathrm{NP}$—which is why Aaronson treats this (alongside $\\mathrm{VP} \\neq \\mathrm{VNP}$) as a sign that $\\mathrm{P} \\neq \\mathrm{NP}$ itself is now within reach.\n* **Important scope caveat:** The lower bound applies to exact *formal arithmetic circuits* (algebraic identities over field operations), not arbitrary bit-level or Word RAM algorithms. Furthermore, OpenAI’s accompanying Lean 4 formalization currently covers division-free arithmetic circuits, while independent human vetting of the full lower-bound proof is still underway.\n\n---\n\n### 2. Current Practical Matmul Implementation Complexity\n\nDespite this theoretical earthquake, **real-world matrix multiplication will not suddenly get faster**, and the November 24 paper is a *speed limit* rather than a faster algorithm:\n\n* **Production libraries (GPUs & CPUs): $O(n^3)$.** Virtually all real-world AI training, inference, and scientific computing libraries—NVIDIA’s **cuBLAS** (and Tensor Cores), **Intel MKL**, **OpenBLAS**, and **LAPACK**—use the classical **$O(n^3)$** schoolbook algorithm. Its simple, predictable memory access patterns allow aggressive cache tiling, SIMD vectorization, and massive parallelism, making it overwhelmingly faster in wall-clock time than asymptotically superior methods.\n* **Practical sub-cubic niche: Strassen’s $O(n^{2.807})$.** Strassen’s algorithm (and Winograd’s variant) is essentially the only general dense sub-cubic algorithm ever used in practice, typically showing speedups only for very large matrices (often $n$ in the thousands) or high-precision arithmetic. Modern GPU stacks rarely use it by default because it adds extra additions, requires extra workspace memory, disrupts hardware-friendly tiling, and degrades floating-point numerical stability.\n* **Why $\\omega \\le 9/4$ is \"galactic\":** Like the Coppersmith–Winograd family before it, OpenAI’s October $\\omega \\le 9/4$ upper bound relies on asymptotic tensor degenerations whose hidden constant factors are astronomically large (and which suffer from severe floating-point instability). Even explicit algorithms derived from the $9/4$ upper bound would only beat $O(n^3)$ or Strassen at matrix dimensions far larger than any physical computer could store. *(The main practical escape from $O(n^3)$ today is exploiting structure—such as sparsity, low-rank approximations, or FFT-based methods for Toeplitz/circulant matrices—rather than lowering $\\omega$ for general dense matrices.)*",
+          "page": 1,
+          "anchored": false,
+          "userAdded": true
+        }
+      ],
+      "enriched": true
+    }
+  ],
+  "mastheadEnriched": true
+}

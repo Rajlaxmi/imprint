@@ -17,9 +17,15 @@
   "use strict";
 
   const API_KEY_STORAGE = "imprint_browser_gemini_key_v1";
+  const GH_TOKEN_STORAGE = "imprint_browser_gh_token_v1";
+  const GH_REPO_STORAGE = "imprint_browser_gh_repo_v1";
+  const GH_AUTOSYNC_STORAGE = "imprint_browser_gh_autosync_v1";
+  const DELETED_SEEDS_STORAGE = "imprint_deleted_seed_books_v1";
+  const STATE_MIRROR_PREFIX = "imprint_state_mirror_v1_";
   const MODEL_STORAGE = "imprint_browser_model_v1";
   const STATIC_DB_NAME = "ImprintStaticServerDB";
   const STATIC_DB_VER = 1;
+  const DEFAULT_GH_REPO = "Rajlaxmi/imprint";
 
   const ENRICH_TEXT_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-4-neon"];
   const ENRICH_IMAGE_MODELS = ["gemini-3.1-flash-image", "gemini-nano-banana-2.1"];
@@ -117,16 +123,18 @@
     });
   }
 
-  async function dbPutBook(book) {
+  async function dbPutBook(book, opts = {}) {
     const db = await openStaticDB();
     if (!db) return;
-    book.updatedAt = Date.now();
-    return new Promise((resolve) => {
+    if (!opts.preserveUpdatedAt) book.updatedAt = Date.now();
+    await new Promise((resolve) => {
       const tx = db.transaction("books", "readwrite");
       tx.objectStore("books").put(book);
       tx.oncomplete = () => resolve(true);
       tx.onerror = () => resolve(false);
     });
+    if (!opts.skipAutoSync) scheduleAutoGitHubSync();
+    return true;
   }
 
   async function dbDeleteBook(id) {
@@ -141,25 +149,233 @@
     });
   }
 
+  function mergeChatLists(a, b, clearedAfter = 0) {
+    const byId = new Map();
+    for (const list of [a, b]) {
+      if (!Array.isArray(list)) continue;
+      for (const m of list) {
+        if (!m || !m.id) continue;
+        if (clearedAfter && (m.createdAt || 0) <= clearedAfter) continue;
+        byId.set(m.id, m);
+      }
+    }
+    return Array.from(byId.values()).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+  }
+
+  function mergeAnnotationLists(a, b) {
+    const byId = new Map();
+    for (const list of [a, b]) {
+      if (!Array.isArray(list)) continue;
+      for (const item of list) {
+        if (!item || !item.id) continue;
+        byId.set(item.id, item);
+      }
+    }
+    return Array.from(byId.values());
+  }
+
+  function mergeChapterStates(stateA, stateB, bookId) {
+    const out = { id: bookId, chapters: {} };
+    const chA = stateA?.chapters || {};
+    const chB = stateB?.chapters || {};
+    const slugs = new Set([...Object.keys(chA), ...Object.keys(chB)]);
+    for (const slug of slugs) {
+      let clearedAt = 0;
+      try {
+        clearedAt = Number(localStorage.getItem(`bvs_${bookId}_${slug}_chat_cleared_at`) || 0);
+      } catch (_) {}
+      out.chapters[slug] = {
+        annotations: mergeAnnotationLists(chA[slug]?.annotations, chB[slug]?.annotations),
+        chatMessages: mergeChatLists(chA[slug]?.chatMessages, chB[slug]?.chatMessages, clearedAt),
+      };
+    }
+    return out;
+  }
+
+  function loadMirrorState(bookId) {
+    try {
+      const raw = localStorage.getItem(STATE_MIRROR_PREFIX + bookId);
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveMirrorState(bookId, stateObj) {
+    try {
+      localStorage.setItem(STATE_MIRROR_PREFIX + bookId, JSON.stringify({ ...stateObj, id: bookId }));
+      for (const [slug, chData] of Object.entries(stateObj?.chapters || {})) {
+        if (Array.isArray(chData.chatMessages)) {
+          localStorage.setItem(`bvs_${bookId}_${slug}_chat`, JSON.stringify(chData.chatMessages));
+        }
+        if (Array.isArray(chData.annotations)) {
+          localStorage.setItem(`bvs_${bookId}_${slug}_annotations`, JSON.stringify(chData.annotations));
+        }
+      }
+    } catch (_) {}
+  }
+
   async function dbGetState(bookId) {
+    const mirror = loadMirrorState(bookId);
     const db = await openStaticDB();
-    if (!db) return { id: bookId, chapters: {} };
+    if (!db) return mirror || { id: bookId, chapters: {} };
     return new Promise((resolve) => {
       const req = db.transaction("states", "readonly").objectStore("states").get(bookId);
-      req.onsuccess = () => resolve(req.result || { id: bookId, chapters: {} });
-      req.onerror = () => resolve({ id: bookId, chapters: {} });
+      req.onsuccess = () => {
+        const idbVal = req.result || { id: bookId, chapters: {} };
+        resolve(mirror ? mergeChapterStates(idbVal, mirror, bookId) : idbVal);
+      };
+      req.onerror = () => resolve(mirror || { id: bookId, chapters: {} });
     });
   }
 
-  async function dbPutState(bookId, stateObj) {
+  async function dbPutState(bookId, stateObj, opts = {}) {
+    const normalized = { ...stateObj, id: bookId, updatedAt: Date.now() };
+    saveMirrorState(bookId, normalized);
     const db = await openStaticDB();
-    if (!db) return;
+    if (db) {
+      await new Promise((resolve) => {
+        const tx = db.transaction("states", "readwrite");
+        tx.objectStore("states").put(normalized);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      });
+    }
+    if (!opts.skipAutoSync) scheduleAutoGitHubSync();
+    return true;
+  }
+
+  function getDeletedSeedIds() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(DELETED_SEEDS_STORAGE) || "[]");
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch (_) {
+      return new Set();
+    }
+  }
+
+  function markSeedDeleted(id) {
+    try {
+      const set = getDeletedSeedIds();
+      set.add(id);
+      localStorage.setItem(DELETED_SEEDS_STORAGE, JSON.stringify(Array.from(set)));
+    } catch (_) {}
+  }
+
+  async function deleteFromAppCacheDB(bookId) {
+    if (!("indexedDB" in window)) return;
     return new Promise((resolve) => {
-      const tx = db.transaction("states", "readwrite");
-      tx.objectStore("states").put({ ...stateObj, id: bookId });
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
+      const req = indexedDB.open("BookVizStudioDB", 2);
+      req.onsuccess = () => {
+        try {
+          const db = req.result;
+          if (!db.objectStoreNames.contains("books")) return resolve();
+          const tx = db.transaction("books", "readwrite");
+          tx.objectStore("books").delete(bookId);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => resolve();
+        } catch (_) {
+          resolve();
+        }
+      };
+      req.onerror = () => resolve();
     });
+  }
+
+  let seedHydratePromise = null;
+  async function ensureSeedLibraryHydrated() {
+    if (seedHydratePromise) return seedHydratePromise;
+    seedHydratePromise = (async () => {
+      try {
+        if (navigator.storage?.persist) {
+          navigator.storage.persist().catch(() => {});
+        }
+        const res = await nativeFetch("library/manifest.json", { cache: "no-cache" });
+        if (!res.ok) return;
+        const ct = (res.headers.get("content-type") || "").toLowerCase();
+        if (!ct.includes("json")) return;
+        const manifest = await res.json();
+        const deletedSeeds = getDeletedSeedIds();
+        const existingBooks = await dbGetAllBooks();
+
+        for (const entry of manifest?.books || []) {
+          const seedId = entry?.id;
+          if (!seedId || deletedSeeds.has(seedId)) continue;
+
+          const [bRes, sRes] = await Promise.all([
+            nativeFetch(`library/${seedId}/book.json`, { cache: "no-cache" }),
+            nativeFetch(`library/${seedId}/state.json`, { cache: "no-cache" }).catch(() => null),
+          ]);
+          if (!bRes || !bRes.ok) continue;
+          const seedBook = await bRes.json();
+          const seedState = sRes && sRes.ok ? await sRes.json() : { chapters: {} };
+
+          // Check if browser has an un-enriched duplicate of the exact same sourceUrl (0 comics)
+          let migratedState = { chapters: {} };
+          if (seedBook.sourceUrl) {
+            const normSeedUrl = seedBook.sourceUrl.trim().replace(/\/+$/, "");
+            for (const other of existingBooks) {
+              if (other.id === seedId) continue;
+              const normOtherUrl = String(other.sourceUrl || "").trim().replace(/\/+$/, "");
+              const otherComics = (other.chapters || []).reduce(
+                (sum, c) => sum + (c.sections || []).filter((s) => Boolean(s.comicUrl)).length,
+                0
+              );
+              if (normOtherUrl && normOtherUrl === normSeedUrl && otherComics === 0) {
+                const otherState = await dbGetState(other.id);
+                migratedState = mergeChapterStates(migratedState, otherState, seedId);
+                await dbDeleteBook(other.id);
+                await deleteFromAppCacheDB(other.id);
+                try {
+                  const curActive = JSON.parse(localStorage.getItem("bvs_active_book_v1") || '""');
+                  if (curActive === other.id) {
+                    localStorage.setItem("bvs_active_book_v1", JSON.stringify(seedId));
+                  }
+                } catch (_) {}
+                if (window.location.hash === `#book/${other.id}`) {
+                  history.replaceState(null, "", `#book/${seedId}`);
+                }
+              }
+            }
+          }
+
+          const localBook = await dbGetBook(seedId);
+          if (!localBook) {
+            await dbPutBook(seedBook, { skipAutoSync: true, preserveUpdatedAt: true });
+          } else {
+            // Preserve any user-added endnotes from local browser while keeping enriched comics/diagrams
+            const mergedBook = {
+              ...seedBook,
+              updatedAt: Math.max(seedBook.updatedAt || 0, localBook.updatedAt || 0),
+            };
+            mergedBook.chapters = (seedBook.chapters || []).map((seedCh, idx) => {
+              const localCh = (localBook.chapters || [])[idx];
+              if (!localCh) return seedCh;
+              const seedUids = new Set((seedCh.endnotes || []).map((n) => n.uid));
+              const extraEndnotes = (localCh.endnotes || []).filter((n) => n.uid && !seedUids.has(n.uid));
+              if (!extraEndnotes.length) return seedCh;
+              return {
+                ...seedCh,
+                paragraphs: localCh.paragraphs || seedCh.paragraphs,
+                endnotes: [...(seedCh.endnotes || []), ...extraEndnotes],
+              };
+            });
+            await dbPutBook(mergedBook, { skipAutoSync: true, preserveUpdatedAt: true });
+          }
+
+          const localState = await dbGetState(seedId);
+          const combinedState = mergeChapterStates(
+            mergeChapterStates(seedState, migratedState, seedId),
+            localState,
+            seedId
+          );
+          await dbPutState(seedId, combinedState, { skipAutoSync: true });
+        }
+      } catch (err) {
+        console.warn("[Imprint Seed Hydration]", err);
+      }
+    })();
+    return seedHydratePromise;
   }
 
   /* ========================================================================
@@ -1247,11 +1463,391 @@
   }
 
   /* ========================================================================
-     API Key Modal UI (Shown Only When Hosted Statically on GitHub Pages)
+     Permanent Save, GitHub Repo Sync & Archive Backup UI (Static Mode)
      ======================================================================== */
+  function getGhToken() {
+    try {
+      return (localStorage.getItem(GH_TOKEN_STORAGE) || "").trim();
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function setGhToken(val) {
+    try {
+      const clean = String(val || "").trim();
+      if (clean) localStorage.setItem(GH_TOKEN_STORAGE, clean);
+      else localStorage.removeItem(GH_TOKEN_STORAGE);
+    } catch (_) {}
+  }
+
+  function getGhRepo() {
+    try {
+      return (localStorage.getItem(GH_REPO_STORAGE) || DEFAULT_GH_REPO).trim() || DEFAULT_GH_REPO;
+    } catch (_) {
+      return DEFAULT_GH_REPO;
+    }
+  }
+
+  function setGhRepo(val) {
+    try {
+      localStorage.setItem(GH_REPO_STORAGE, String(val || DEFAULT_GH_REPO).trim() || DEFAULT_GH_REPO);
+    } catch (_) {}
+  }
+
+  function isGhAutoSyncEnabled() {
+    try {
+      return localStorage.getItem(GH_AUTOSYNC_STORAGE) === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function setGhAutoSyncEnabled(flag) {
+    try {
+      localStorage.setItem(GH_AUTOSYNC_STORAGE, flag ? "1" : "0");
+    } catch (_) {}
+  }
+
+  let autoSyncTimer = null;
+  function scheduleAutoGitHubSync() {
+    if (!staticMode || !getGhToken() || !isGhAutoSyncEnabled()) return;
+    clearTimeout(autoSyncTimer);
+    autoSyncTimer = setTimeout(() => {
+      commitAllBooksToGitHub().catch((err) => console.warn("[AutoGitHubSync]", err.message));
+    }, 3500);
+  }
+
+  async function commitAllBooksToGitHub(onStatus) {
+    const token = getGhToken();
+    const repo = getGhRepo();
+    if (!token) throw new Error("Enter a GitHub Personal Access Token (Contents: Read & write) first.");
+    if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) throw new Error("Repo must be in owner/name format (e.g. Rajlaxmi/imprint).");
+
+    const ghHeaders = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "Content-Type": "application/json",
+    };
+
+    const ghReq = async (pathUrl, opts = {}) => {
+      const r = await nativeFetch(`https://api.github.com/repos/${repo}${pathUrl}`, {
+        ...opts,
+        headers: { ...ghHeaders, ...(opts.headers || {}) },
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.message || `GitHub API HTTP ${r.status}`);
+      return data;
+    };
+
+    if (onStatus) onStatus("Reading current main branch from GitHub…");
+    const refData = await ghReq("/git/ref/heads/main");
+    const baseCommitSha = refData.object.sha;
+    const commitData = await ghReq(`/git/commits/${baseCommitSha}`);
+    const baseTreeSha = commitData.tree.sha;
+
+    const books = await dbGetAllBooks();
+    const treeEntries = [];
+    const manifestBooks = [];
+
+    for (let bIdx = 0; bIdx < books.length; bIdx++) {
+      const rawBook = JSON.parse(JSON.stringify(books[bIdx]));
+      delete rawBook.sourcePath;
+      const state = await dbGetState(rawBook.id);
+
+      if (onStatus) onStatus(`Uploading "${rawBook.title}" (${bIdx + 1}/${books.length})…`);
+
+      // Convert any data:image/...;base64,... Story Comics into real .jpg files in public/library/<id>/comics/
+      for (const ch of rawBook.chapters || []) {
+        for (let sIdx = 0; sIdx < (ch.sections || []).length; sIdx++) {
+          const sec = ch.sections[sIdx];
+          const url = String(sec.comicUrl || "");
+          const dataMatch = url.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
+          if (dataMatch) {
+            const ext = dataMatch[1].includes("png") ? "png" : "jpg";
+            const fileName = `ch${ch.num || 1}_sec${sIdx + 1}.${ext}`;
+            const blobRes = await ghReq("/git/blobs", {
+              method: "POST",
+              body: JSON.stringify({ content: dataMatch[2], encoding: "base64" }),
+            });
+            const relPath = `library/${rawBook.id}/comics/${fileName}`;
+            treeEntries.push({
+              path: `public/${relPath}`,
+              mode: "100644",
+              type: "blob",
+              sha: blobRes.sha,
+            });
+            sec.comicUrl = relPath;
+          }
+        }
+      }
+
+      const bookBlob = await ghReq("/git/blobs", {
+        method: "POST",
+        body: JSON.stringify({ content: JSON.stringify(rawBook, null, 2), encoding: "utf-8" }),
+      });
+      treeEntries.push({
+        path: `public/library/${rawBook.id}/book.json`,
+        mode: "100644",
+        type: "blob",
+        sha: bookBlob.sha,
+      });
+
+      const stateBlob = await ghReq("/git/blobs", {
+        method: "POST",
+        body: JSON.stringify({ content: JSON.stringify(state, null, 2), encoding: "utf-8" }),
+      });
+      treeEntries.push({
+        path: `public/library/${rawBook.id}/state.json`,
+        mode: "100644",
+        type: "blob",
+        sha: stateBlob.sha,
+      });
+
+      const previewComicUrl =
+        rawBook.chapters?.flatMap((c) => c.sections || []).find((s) => s.comicUrl)?.comicUrl || "";
+      manifestBooks.push({
+        id: rawBook.id,
+        title: rawBook.title,
+        subtitle: rawBook.subtitle || "",
+        author: rawBook.author || "Unknown Author",
+        publisherMeta: rawBook.publisherMeta || "DIGITAL EDITION",
+        pubDate: rawBook.pubDate || "",
+        tagline: rawBook.tagline || "",
+        sourceFormat: rawBook.sourceFormat || "epub",
+        sourceUrl: rawBook.sourceUrl || "",
+        chapterCount: (rawBook.chapters || []).length,
+        wordCount: rawBook.wordCount || 0,
+        totalPages: rawBook.totalPages || 1,
+        createdAt: rawBook.createdAt || Date.now(),
+        updatedAt: rawBook.updatedAt || Date.now(),
+        job: rawBook.job || { status: "ready", percent: 100 },
+        previewComicUrl,
+      });
+    }
+
+    const manifestObj = {
+      version: 1,
+      updatedAt: Date.now(),
+      books: manifestBooks,
+    };
+    const manifestBlob = await ghReq("/git/blobs", {
+      method: "POST",
+      body: JSON.stringify({ content: JSON.stringify(manifestObj, null, 2), encoding: "utf-8" }),
+    });
+    treeEntries.push({
+      path: "public/library/manifest.json",
+      mode: "100644",
+      type: "blob",
+      sha: manifestBlob.sha,
+    });
+
+    if (onStatus) onStatus("Committing permanent snapshot to GitHub…");
+    const newTree = await ghReq("/git/trees", {
+      method: "POST",
+      body: JSON.stringify({ base_tree: baseTreeSha, tree: treeEntries }),
+    });
+    const newCommit = await ghReq("/git/commits", {
+      method: "POST",
+      body: JSON.stringify({
+        message: `Save Imprint library (${books.length} edition${books.length === 1 ? "" : "s"}, notes & chats)`,
+        tree: newTree.sha,
+        parents: [baseCommitSha],
+      }),
+    });
+    await ghReq("/git/refs/heads/main", {
+      method: "PATCH",
+      body: JSON.stringify({ sha: newCommit.sha }),
+    });
+    return { commitSha: newCommit.sha.slice(0, 7), count: books.length };
+  }
+
+  async function exportFullArchiveJson() {
+    await ensureSeedLibraryHydrated();
+    const books = await dbGetAllBooks();
+    const states = {};
+    for (const b of books) {
+      states[b.id] = await dbGetState(b.id);
+    }
+    const payload = {
+      app: "Imprint",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      books,
+      states,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `imprint-library-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 1000);
+  }
+
+  async function importFullArchiveJson(file) {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const books = Array.isArray(parsed.books) ? parsed.books : [];
+    const states = parsed.states || {};
+    for (const b of books) {
+      if (!b || !b.id) continue;
+      await dbPutBook(b);
+      if (states[b.id]) {
+        const cur = await dbGetState(b.id);
+        await dbPutState(b.id, mergeChapterStates(cur, states[b.id], b.id), { skipAutoSync: true });
+      }
+    }
+    return books.length;
+  }
+
+  async function openSaveSyncModal() {
+    await ensureSeedLibraryHydrated();
+    let overlay = document.getElementById("imprintSaveModal");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "imprintSaveModal";
+      overlay.className = "modal-overlay";
+      overlay.innerHTML = `
+        <div class="studio-modal save-sync-modal" role="dialog" aria-modal="true" aria-labelledby="saveSyncTitle">
+          <div class="studio-modal__header">
+            <div>
+              <span class="rail-eyebrow">Permanent Library, Notes &amp; AI Chat Persistence</span>
+              <h2 class="studio-modal__title" id="saveSyncTitle">Permanent Save &amp; Sync</h2>
+            </div>
+            <button type="button" class="rail-close-btn studio-modal__close" id="saveSyncCloseBtn" aria-label="Close">&times;</button>
+          </div>
+          <div class="save-sync-card">
+            <p class="save-sync-card__title">
+              <span>1. Browser Permanent Storage</span>
+              <span class="save-sync-badge" id="savePersistBadge">Active</span>
+            </p>
+            <p class="save-sync-card__desc" id="saveLocalStatsText">Checking saved books, notes, endnotes &amp; chats…</p>
+          </div>
+          <div class="save-sync-card">
+            <p class="save-sync-card__title">
+              <span>2. Commit Permanently to GitHub Repo</span>
+            </p>
+            <p class="save-sync-card__desc">Save new books, Story Comics, highlights, endnotes &amp; AI chat history directly into <code>public/library/</code> on GitHub so every device loads them automatically.</p>
+            <div class="save-sync-row" style="margin-bottom:0.45rem;">
+              <input type="text" class="save-sync-input" id="ghRepoInput" placeholder="Owner/repo (e.g. Rajlaxmi/imprint)" />
+            </div>
+            <div class="save-sync-row">
+              <input type="password" class="save-sync-input" id="ghTokenInput" placeholder="GitHub Token (Contents: Read &amp; write)" />
+              <button type="button" class="save-sync-btn save-sync-btn--primary" id="ghCommitNowBtn">☁️ Save to GitHub</button>
+            </div>
+            <label class="save-sync-check">
+              <input type="checkbox" id="ghAutoSyncCheck" />
+              <span>Auto-commit new chats, notes &amp; books to GitHub</span>
+            </label>
+            <div class="save-sync-status" id="ghSyncStatusMsg" hidden></div>
+          </div>
+          <div class="save-sync-card" style="margin-bottom:0;">
+            <p class="save-sync-card__title"><span>3. Portable Archive File (.json)</span></p>
+            <p class="save-sync-card__desc">Download or restore a complete offline file containing all books, comics, endnotes, highlights &amp; chat threads.</p>
+            <div class="save-sync-row">
+              <button type="button" class="save-sync-btn" id="exportArchiveBtn">⬇️ Download Full Backup</button>
+              <button type="button" class="save-sync-btn" id="importArchiveBtn">⬆️ Restore Backup</button>
+              <input type="file" id="importArchiveFileInput" accept=".json,application/json" hidden />
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) overlay.hidden = true;
+      });
+      overlay.querySelector("#saveSyncCloseBtn").addEventListener("click", () => {
+        overlay.hidden = true;
+      });
+      overlay.querySelector("#exportArchiveBtn").addEventListener("click", () => {
+        exportFullArchiveJson();
+      });
+      const fileInput = overlay.querySelector("#importArchiveFileInput");
+      overlay.querySelector("#importArchiveBtn").addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", async () => {
+        const f = fileInput.files?.[0];
+        if (!f) return;
+        const statusEl = overlay.querySelector("#ghSyncStatusMsg");
+        statusEl.hidden = false;
+        try {
+          const n = await importFullArchiveJson(f);
+          statusEl.textContent = `✓ Restored ${n} book(s) with notes & chat history — reloading…`;
+          setTimeout(() => window.location.reload(), 700);
+        } catch (err) {
+          statusEl.textContent = `Restore error: ${err.message}`;
+        }
+      });
+
+      overlay.querySelector("#ghAutoSyncCheck").addEventListener("change", (e) => {
+        setGhRepo(overlay.querySelector("#ghRepoInput").value);
+        setGhToken(overlay.querySelector("#ghTokenInput").value);
+        setGhAutoSyncEnabled(e.target.checked);
+      });
+
+      overlay.querySelector("#ghCommitNowBtn").addEventListener("click", async () => {
+        const statusEl = overlay.querySelector("#ghSyncStatusMsg");
+        const btn = overlay.querySelector("#ghCommitNowBtn");
+        setGhRepo(overlay.querySelector("#ghRepoInput").value);
+        setGhToken(overlay.querySelector("#ghTokenInput").value);
+        statusEl.hidden = false;
+        btn.disabled = true;
+        try {
+          const res = await commitAllBooksToGitHub((msg) => {
+            statusEl.textContent = msg;
+          });
+          statusEl.textContent = `✓ Saved permanently to GitHub (commit ${res.commitSha} · ${res.count} edition${res.count === 1 ? "" : "s"}).`;
+        } catch (err) {
+          statusEl.textContent = `GitHub sync error: ${err.message}`;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
+
+    const books = await dbGetAllBooks();
+    let comics = 0;
+    let endnotes = 0;
+    let notes = 0;
+    let chats = 0;
+    for (const b of books) {
+      for (const c of b.chapters || []) {
+        endnotes += (c.endnotes || []).length;
+        comics += (c.sections || []).filter((s) => Boolean(s.comicUrl)).length;
+      }
+      const st = await dbGetState(b.id);
+      for (const chObj of Object.values(st.chapters || {})) {
+        notes += (chObj.annotations || []).length;
+        chats += (chObj.chatMessages || []).length;
+      }
+    }
+    const persisted = (await navigator.storage?.persisted?.().catch(() => false)) || false;
+    overlay.querySelector("#savePersistBadge").textContent = persisted
+      ? "Non-Evictable · Active"
+      : "IndexedDB + Mirror Active";
+    overlay.querySelector("#saveLocalStatsText").textContent =
+      `Currently storing ${books.length} edition(s), ${comics} Story Comic(s), ${notes} highlight/note(s), ${endnotes} endnote(s), and ${chats} AI chat message(s) across refreshes.`;
+    overlay.querySelector("#ghRepoInput").value = getGhRepo();
+    overlay.querySelector("#ghTokenInput").value = getGhToken();
+    overlay.querySelector("#ghAutoSyncCheck").checked = isGhAutoSyncEnabled();
+    overlay.hidden = false;
+  }
+
   function injectStaticApiKeyBanner() {
     const actions = document.querySelector(".reader-bar__actions");
     if (!actions || document.getElementById("staticKeyBtn")) return;
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "bar-btn";
+    saveBtn.id = "staticSaveSyncBtn";
+    saveBtn.title = "Permanent storage status, GitHub repository commit sync & full JSON backup";
+    saveBtn.innerHTML = `<span aria-hidden="true">💾</span><span class="bar-btn__label">Save</span>`;
+    saveBtn.addEventListener("click", openSaveSyncModal);
 
     const btn = document.createElement("button");
     btn.type = "button";
@@ -1261,7 +1857,7 @@
     const refreshBtnLabel = () => {
       const has = Boolean(getApiKey());
       btn.innerHTML = `<span aria-hidden="true">${has ? "🔑" : "⚠️"}</span><span class="bar-btn__label">${
-        has ? "API Key" : "Set Gemini Key"
+        has ? "API Key" : "Gemini Key"
       }</span>`;
       const pill = document.getElementById("aiModelPillBtn");
       if (pill) pill.classList.toggle("is-connected", has);
@@ -1280,6 +1876,7 @@
     });
 
     actions.insertBefore(btn, actions.firstChild);
+    actions.insertBefore(saveBtn, btn);
   }
 
   /* ========================================================================
@@ -1339,6 +1936,7 @@
   }
 
   async function handleStaticApi(pathname, searchParams, method, options) {
+    await ensureSeedLibraryHydrated();
     if (pathname === "/api/status" && method === "GET") {
       const books = await dbGetAllBooks();
       const model = getActiveModel();
@@ -1418,7 +2016,9 @@
         return b ? jsonResponse(200, b) : jsonResponse(404, { error: "Not found" });
       }
       if (!sub && method === "DELETE") {
+        markSeedDeleted(bookId);
         await dbDeleteBook(bookId);
+        scheduleAutoGitHubSync();
         return jsonResponse(200, { ok: true });
       }
       if (sub === "progress" && method === "GET") {
@@ -1486,7 +2086,7 @@
         const st = await dbGetState(bookId);
         const ch = body.chapter || "chapter-1";
         st.chapters[ch] = st.chapters[ch] || { annotations: [], chatMessages: [] };
-        st.chapters[ch].annotations = body.annotations || [];
+        st.chapters[ch].annotations = Array.isArray(body.annotations) ? body.annotations : [];
         await dbPutState(bookId, st);
         return jsonResponse(200, { ok: true });
       }
@@ -1495,7 +2095,15 @@
         const st = await dbGetState(bookId);
         const ch = body.chapter || "chapter-1";
         st.chapters[ch] = st.chapters[ch] || { annotations: [], chatMessages: [] };
-        st.chapters[ch].chatMessages = body.chatMessages || [];
+        let clearedAt = 0;
+        try {
+          clearedAt = Number(localStorage.getItem(`bvs_${bookId}_${ch}_chat_cleared_at`) || 0);
+        } catch (_) {}
+        st.chapters[ch].chatMessages = mergeChatLists(
+          st.chapters[ch].chatMessages,
+          body.chatMessages || [],
+          clearedAt
+        );
         await dbPutState(bookId, st);
         return jsonResponse(200, { ok: true, chatMessages: st.chapters[ch].chatMessages });
       }

@@ -19,6 +19,8 @@ const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || "127.0.0.1";
 const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, "public");
+const PUBLIC_LIB_DIR = path.join(PUBLIC_DIR, "library");
+const PUBLIC_MANIFEST_PATH = path.join(PUBLIC_LIB_DIR, "manifest.json");
 const DATA_DIR = path.join(ROOT_DIR, "data");
 const BOOKS_DIR = path.join(DATA_DIR, "books");
 const LIBRARY_PATH = path.join(DATA_DIR, "library.json");
@@ -149,6 +151,7 @@ function writeBook(book) {
   fs.writeFileSync(tmp, JSON.stringify(book, null, 2), "utf8");
   fs.renameSync(tmp, target);
   upsertLibraryEntry(book);
+  syncBookToPublicLibrary(book.id);
 }
 
 function upsertLibraryEntry(book) {
@@ -206,7 +209,142 @@ function writeBookState(bookId, state) {
   const tmp = `${target}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2), "utf8");
   fs.renameSync(tmp, target);
+  syncBookToPublicLibrary(bookId);
 }
+
+/* ==========================================================================
+   Permanent Public Library Mirror (`public/library/`) for GitHub Pages Parity
+   ========================================================================== */
+function rewriteComicUrlForStatic(urlStr, bookId) {
+  const raw = String(urlStr || "");
+  if (!raw) return "";
+  const m = raw.match(/^\/?api\/books\/(book_[a-z0-9_]+)\/comics\/([^?#]+)(\?.*)?$/i);
+  if (m) {
+    return `library/${m[1]}/comics/${m[2]}${m[3] || ""}`;
+  }
+  return raw;
+}
+
+function writePublicManifest() {
+  fs.mkdirSync(PUBLIC_LIB_DIR, { recursive: true });
+  const lib = readLibrary();
+  const entries = [];
+  for (const summary of lib.books || []) {
+    const pubBookPath = path.join(PUBLIC_LIB_DIR, summary.id, "book.json");
+    if (!fs.existsSync(pubBookPath)) continue;
+    entries.push({
+      ...summary,
+      previewComicUrl: rewriteComicUrlForStatic(summary.previewComicUrl, summary.id),
+    });
+  }
+  const manifest = {
+    version: 1,
+    updatedAt: Date.now(),
+    books: entries,
+  };
+  const tmp = `${PUBLIC_MANIFEST_PATH}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(manifest, null, 2), "utf8");
+  fs.renameSync(tmp, PUBLIC_MANIFEST_PATH);
+}
+
+function syncBookToPublicLibrary(bookId) {
+  try {
+    const book = readBook(bookId);
+    if (!book) return;
+    // Wait until initial text extraction has produced readable chapters
+    if (!Array.isArray(book.chapters) || book.chapters.length === 0) return;
+
+    const destDir = path.join(PUBLIC_LIB_DIR, bookId);
+    fs.mkdirSync(destDir, { recursive: true });
+
+    // Copy Story Comic images to public/library/<bookId>/comics/
+    const srcComicsDir = path.join(bookDir(bookId), "comics");
+    if (fs.existsSync(srcComicsDir)) {
+      const destComicsDir = path.join(destDir, "comics");
+      fs.mkdirSync(destComicsDir, { recursive: true });
+      for (const fname of fs.readdirSync(srcComicsDir)) {
+        if (/\.(jpg|jpeg|png|webp)$/i.test(fname)) {
+          fs.copyFileSync(path.join(srcComicsDir, fname), path.join(destComicsDir, fname));
+        }
+      }
+    }
+
+    // Clone book without host filesystem paths & rewrite comic URLs to relative static paths
+    const pubBook = JSON.parse(JSON.stringify(book));
+    delete pubBook.sourcePath;
+    for (const ch of pubBook.chapters || []) {
+      for (const sec of ch.sections || []) {
+        if (sec.comicUrl) {
+          sec.comicUrl = rewriteComicUrlForStatic(sec.comicUrl, bookId);
+        }
+      }
+    }
+
+    const pubBookTmp = path.join(destDir, "book.json.tmp");
+    fs.writeFileSync(pubBookTmp, JSON.stringify(pubBook, null, 2), "utf8");
+    fs.renameSync(pubBookTmp, path.join(destDir, "book.json"));
+
+    const state = readBookState(bookId);
+    const pubStateTmp = path.join(destDir, "state.json.tmp");
+    fs.writeFileSync(pubStateTmp, JSON.stringify(state, null, 2), "utf8");
+    fs.renameSync(pubStateTmp, path.join(destDir, "state.json"));
+
+    writePublicManifest();
+  } catch (err) {
+    console.warn("[PublicLibrarySync]", err.message);
+  }
+}
+
+function removeBookFromPublicLibrary(bookId) {
+  try {
+    const destDir = path.join(PUBLIC_LIB_DIR, bookId);
+    fs.rmSync(destDir, { recursive: true, force: true });
+    writePublicManifest();
+  } catch (_) {}
+}
+
+function hydrateDataFromPublicLibraryAndSync() {
+  try {
+    // 1. If a fresh clone has books in public/library/ missing from data/books/, seed data/books/
+    if (fs.existsSync(PUBLIC_MANIFEST_PATH)) {
+      const manifest = JSON.parse(fs.readFileSync(PUBLIC_MANIFEST_PATH, "utf8"));
+      for (const entry of manifest.books || []) {
+        const id = sanitizeBookId(entry.id);
+        if (!id || fs.existsSync(bookJsonPath(id))) continue;
+        const pubDir = path.join(PUBLIC_LIB_DIR, id);
+        const pubBookFile = path.join(pubDir, "book.json");
+        if (!fs.existsSync(pubBookFile)) continue;
+        const dstDir = bookDir(id);
+        fs.mkdirSync(dstDir, { recursive: true });
+        fs.copyFileSync(pubBookFile, bookJsonPath(id));
+        const pubStateFile = path.join(pubDir, "state.json");
+        if (fs.existsSync(pubStateFile)) {
+          fs.copyFileSync(pubStateFile, bookStatePath(id));
+        }
+        const pubComics = path.join(pubDir, "comics");
+        if (fs.existsSync(pubComics)) {
+          const dstComics = path.join(dstDir, "comics");
+          fs.mkdirSync(dstComics, { recursive: true });
+          for (const f of fs.readdirSync(pubComics)) {
+            fs.copyFileSync(path.join(pubComics, f), path.join(dstComics, f));
+          }
+        }
+        const seededBook = readBook(id);
+        if (seededBook) upsertLibraryEntry(seededBook);
+      }
+    }
+    // 2. Ensure every book in data/books/ is mirrored into public/library/
+    const lib = readLibrary();
+    for (const b of lib.books || []) {
+      syncBookToPublicLibrary(b.id);
+    }
+    writePublicManifest();
+  } catch (err) {
+    console.warn("[PublicLibraryInit]", err.message);
+  }
+}
+
+hydrateDataFromPublicLibraryAndSync();
 
 function decodeHtmlEntitiesBasic(str) {
   return String(str || "")
@@ -1773,6 +1911,7 @@ const server = http.createServer(async (req, res) => {
         lib.books = lib.books.filter((b) => b.id !== bookId);
         writeLibrary(lib);
         fs.rmSync(bookDir(bookId), { recursive: true, force: true });
+        removeBookFromPublicLibrary(bookId);
         return sendJSON(res, 200, { ok: true, deleted: bookId });
       }
 

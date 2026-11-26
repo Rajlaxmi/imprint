@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "updatedAt": 1795677546655,
+  "books": [
+    {
+      "id": "book_mwx3vid0_0fi5",
+      "title": "Holy Shit Holy Shit Holy Shit Holy Shit",
+      "subtitle": "",
+      "author": "Scott Aaronson",
+      "publisherMeta": "SHTETL-OPTIMIZED",
+      "pubDate": "NOV 2026",
+      "tagline": "“I NEVER EXPECTED THIS CHALLENGE TO BE ALL THAT MUCH EASIER THAN P ≠ NP.”",
+      "sourceFormat": "web",
+      "sourceUrl": "https://scottaaronson.blog/?p=10379",
+      "originalFilename": "linked_book",
+      "chapterCount": 1,
+      "wordCount": 1216,
+      "totalPages": 4,
+      "createdAt": 1795670537783,
+      "updatedAt": 1795672705749,
+      "job": {
+        "status": "ready",
+        "readable": true,
+        "comicMode": "all",
+        "percent": 100,
+        "phase": "Complete — Full text, SVG concept diagrams & Story Comics ready.",
+        "chaptersExtracted": 1,
+        "completedSteps": 4,
+        "totalSteps": 4,
+        "comicsDone": 2,
+        "comicsTotal": 2
+      },
+      "previewComicUrl": "library/book_mwx3vid0_0fi5/comics/ch1_sec1.jpg?v=1795671037261"
+    }
+  ]
+}
