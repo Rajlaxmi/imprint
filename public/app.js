@@ -44,7 +44,7 @@
     return new Promise((resolve) => {
       const tx = db.transaction(IDB_STATE_STORE, "readwrite");
       tx.objectStore(IDB_STATE_STORE).put({
-        id: `v2::${bookId}::${ch}`,
+        id: `v3::${bookId}::${ch}`,
         bookId,
         chapter: ch,
         annotations: data.annotations || [],
@@ -62,7 +62,7 @@
     if (!db || !db.objectStoreNames.contains(IDB_STATE_STORE)) return null;
     return new Promise((resolve) => {
       const tx = db.transaction(IDB_STATE_STORE, "readonly");
-      const req = tx.objectStore(IDB_STATE_STORE).get(`v2::${bookId}::${ch}`);
+      const req = tx.objectStore(IDB_STATE_STORE).get(`v3::${bookId}::${ch}`);
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => resolve(null);
     });
@@ -135,19 +135,19 @@
     return `bvs_${bookId}_active_ch`;
   }
   function annStorageKey(bookId, ch) {
-    return `bvs_v2_${bookId}_${ch}_annotations`;
+    return `bvs_v3_${bookId}_${ch}_annotations`;
   }
   function annDeletedKey(bookId, ch) {
-    return `bvs_v2_${bookId}_${ch}_ann_deleted`;
+    return `bvs_v3_${bookId}_${ch}_ann_deleted`;
   }
   function annClearedKey(bookId, ch) {
-    return `bvs_v2_${bookId}_${ch}_ann_cleared_at`;
+    return `bvs_v3_${bookId}_${ch}_ann_cleared_at`;
   }
   function chatStorageKey(bookId, ch) {
-    return `bvs_v2_${bookId}_${ch}_chat`;
+    return `bvs_v3_${bookId}_${ch}_chat`;
   }
   function chatClearedKey(bookId, ch) {
-    return `bvs_v2_${bookId}_${ch}_chat_cleared_at`;
+    return `bvs_v3_${bookId}_${ch}_chat_cleared_at`;
   }
 
   function mergeAnnotationListsClient(lists, deletedSet = new Set(), clearedAfter = 0, targetBookId = "") {

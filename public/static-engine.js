@@ -21,7 +21,7 @@
   const GH_REPO_STORAGE = "imprint_browser_gh_repo_v1";
   const GH_AUTOSYNC_STORAGE = "imprint_browser_gh_autosync_v1";
   const DELETED_SEEDS_STORAGE = "imprint_deleted_seed_books_v1";
-  const STATE_MIRROR_PREFIX = "imprint_state_mirror_v2_";
+  const STATE_MIRROR_PREFIX = "imprint_state_mirror_v3_";
   const MODEL_STORAGE = "imprint_browser_model_v1";
   const STATIC_DB_NAME = "ImprintStaticServerDB";
   const STATIC_DB_VER = 1;
