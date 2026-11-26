@@ -531,34 +531,82 @@
   });
 
   /* ========================================================================
-     5. SVG Diagram & Story Comic HTML Builders (Exact debt-book-viz Markup)
+     5. SVG Diagram & Story Comic HTML Builders (Overflow-Proof Wrapping)
      ======================================================================== */
+  function splitSvgLines(raw, maxCharsPerLine, maxLines = 2) {
+    const clean = String(raw || "").replace(/\s+/g, " ").trim();
+    if (!clean) return [""];
+    const words = clean.split(" ");
+    const lines = [];
+    let current = "";
+
+    for (const w of words) {
+      const candidate = current ? `${current} ${w}` : w;
+      if (candidate.length <= maxCharsPerLine || !current) {
+        current = candidate;
+      } else {
+        lines.push(current);
+        current = w;
+      }
+    }
+    if (current) lines.push(current);
+
+    if (lines.length > maxLines) {
+      const kept = lines.slice(0, maxLines);
+      const tail = lines.slice(maxLines - 1).join(" ");
+      kept[maxLines - 1] =
+        tail.length > maxCharsPerLine + 2
+          ? tail.slice(0, Math.max(6, maxCharsPerLine - 1)).trimEnd() + "…"
+          : tail;
+      return kept;
+    }
+    return lines;
+  }
+
+  function renderSvgTextLines(lines, x, firstY, lineHeight, className, maxPxWidth) {
+    return lines
+      .map((ln, idx) => {
+        const y = firstY + idx * lineHeight;
+        // Clamp width gently if an individual word/line is unusually wide
+        const approxCharPx = className.includes("sv-box-title") ? 7.2 : className.includes("sv-mono-label") ? 6.8 : 5.9;
+        const clampAttr =
+          maxPxWidth && ln.length * approxCharPx > maxPxWidth
+            ? ` textLength="${maxPxWidth}" lengthAdjust="spacingAndGlyphs"`
+            : "";
+        return `<text x="${x}" y="${y}" text-anchor="middle" class="${className}"${clampAttr}>${escapeHTML(ln)}</text>`;
+      })
+      .join("");
+  }
+
+  function renderDiagramBox(box, x, width, boxClass, titleClass) {
+    const cx = x + width / 2;
+    const titleLines = splitSvgLines(box?.title || "CONCEPT", 17, 2);
+    const subLines = splitSvgLines(box?.sub || "", 24, 2);
+    const titleStartY = titleLines.length > 1 ? 66 : 73;
+    const subStartY = titleLines.length > 1 ? 94 : 92;
+
+    return `
+      <rect x="${x}" y="46" width="${width}" height="70" rx="6" class="${boxClass}" />
+      ${renderSvgTextLines(titleLines, cx, titleStartY, 13, titleClass, width - 16)}
+      ${renderSvgTextLines(subLines, cx, subStartY, 12, "sv-sub-label", width - 16)}
+    `;
+  }
+
   function renderDiagramSVG(diagram) {
     const d = diagram || {};
-    const heading = escapeHTML(d.heading || "CONCEPT DIAGRAM");
-    const b1t = escapeHTML(d.box1?.title || "PREMISE");
-    const b1s = escapeHTML(d.box1?.sub || "");
-    const b2t = escapeHTML(d.box2?.title || "MECHANISM");
-    const b2s = escapeHTML(d.box2?.sub || "");
-    const b3t = escapeHTML(d.box3?.title || "OUTCOME");
-    const b3s = escapeHTML(d.box3?.sub || "");
-    const footer = escapeHTML(d.footer || "");
+    const headingLines = splitSvgLines(d.heading || "CONCEPT DIAGRAM", 54, 1);
+    const footerLines = splitSvgLines(d.footer || "", 68, 2);
+    const svgHeight = footerLines.length > 1 ? 196 : 184;
 
-    return `<svg viewBox="0 0 640 180" role="img" aria-label="${heading}">
-      <text x="320" y="26" text-anchor="middle" class="sv-mono-label">${heading}</text>
-      <rect x="34" y="50" width="156" height="58" rx="6" class="sv-card-box" />
-      <text x="112" y="74" text-anchor="middle" class="sv-box-title">${b1t}</text>
-      <text x="112" y="92" text-anchor="middle" class="sv-sub-label">${b1s}</text>
-      <line x1="196" y1="79" x2="236" y2="79" class="sv-flow-dots sv-flow-dots--indigo" />
-      <rect x="242" y="50" width="156" height="58" rx="6" class="sv-card-box sv-card-box--indigo" />
-      <text x="320" y="74" text-anchor="middle" class="sv-box-title sv-indigo-fill">${b2t}</text>
-      <text x="320" y="92" text-anchor="middle" class="sv-sub-label">${b2s}</text>
-      <line x1="404" y1="79" x2="444" y2="79" class="sv-flow-dots" />
-      <rect x="450" y="50" width="156" height="58" rx="6" class="sv-card-box sv-card-box--heavy" />
-      <text x="528" y="74" text-anchor="middle" class="sv-box-title sv-accent-fill">${b3t}</text>
-      <text x="528" y="92" text-anchor="middle" class="sv-sub-label">${b3s}</text>
-      <line x1="34" y1="128" x2="606" y2="128" class="sv-divider-dash" />
-      <text x="320" y="156" text-anchor="middle" class="sv-box-title">${footer}</text>
+    return `<svg viewBox="0 0 640 ${svgHeight}" role="img" aria-label="${escapeHTML(d.heading || "Concept Diagram")}">
+      ${renderSvgTextLines(headingLines, 320, 25, 13, "sv-mono-label", 580)}
+      ${renderDiagramBox(d.box1 || { title: "PREMISE" }, 22, 174, "sv-card-box", "sv-box-title")}
+      <line x1="201" y1="81" x2="228" y2="81" class="sv-flow-dots sv-flow-dots--indigo" />
+      ${renderDiagramBox(d.box2 || { title: "MECHANISM" }, 233, 174, "sv-card-box sv-card-box--indigo", "sv-box-title sv-indigo-fill")}
+      <line x1="412" y1="81" x2="439" y2="81" class="sv-flow-dots" />
+      ${renderDiagramBox(d.box3 || { title: "OUTCOME" }, 444, 174, "sv-card-box sv-card-box--heavy", "sv-box-title sv-accent-fill")}
+      <line x1="22" y1="134" x2="618" y2="134" class="sv-divider-dash" />
+      ${renderSvgTextLines(footerLines, 320, 156, 15, "sv-box-title", 588)}
     </svg>`;
   }
 
@@ -573,11 +621,11 @@
           <img src="${escapeHTML(sec.comicUrl)}" alt="${escapeHTML(sec.title)} Story Comic" class="comic-img" loading="lazy" />
         </div>
         <div class="comic-beats" role="tablist" aria-label="Story comic tour">
-          <button type="button" class="comic-beat is-active" data-beat="0">Full Scene</button>
-          <button type="button" class="comic-beat" data-beat="1">${escapeHTML(beats[0])}</button>
-          <button type="button" class="comic-beat" data-beat="2">${escapeHTML(beats[1])}</button>
-          <button type="button" class="comic-beat" data-beat="3">${escapeHTML(beats[2])}</button>
-          <button type="button" class="comic-beat" data-beat="4">${escapeHTML(beats[3])}</button>
+          <button type="button" class="comic-beat is-active" data-beat="0" title="Full Scene">Full Scene</button>
+          <button type="button" class="comic-beat" data-beat="1" title="${escapeHTML(beats[0])}">${escapeHTML(beats[0])}</button>
+          <button type="button" class="comic-beat" data-beat="2" title="${escapeHTML(beats[1])}">${escapeHTML(beats[1])}</button>
+          <button type="button" class="comic-beat" data-beat="3" title="${escapeHTML(beats[2])}">${escapeHTML(beats[2])}</button>
+          <button type="button" class="comic-beat" data-beat="4" title="${escapeHTML(beats[3])}">${escapeHTML(beats[3])}</button>
         </div>
       `;
     }
@@ -836,23 +884,66 @@
     });
   }
 
+  function computeTitleTier(titleStr) {
+    const clean = String(titleStr || "").trim().toUpperCase();
+    const totalLen = clean.length;
+    const words = clean.split(/[\s—–-]+/).filter(Boolean);
+    const maxWordLen = words.reduce((m, w) => Math.max(m, w.length), 0);
+
+    if (totalLen <= 8 && maxWordLen <= 6) return "short";
+    if (totalLen <= 16 && maxWordLen <= 9) return "medium";
+    if (totalLen <= 34 && maxWordLen <= 13) return "long";
+    return "xlong";
+  }
+
+  function fitReceiptTitle() {
+    if (!receiptBookTitle) return;
+    receiptBookTitle.style.fontSize = "";
+    receiptBookTitle.style.letterSpacing = "";
+
+    const containerWidth = receiptBookTitle.clientWidth;
+    if (!containerWidth) return;
+
+    // Guarantee zero horizontal overflow even for unusually long single words or narrow viewports
+    let computed = parseFloat(window.getComputedStyle(receiptBookTitle).fontSize) || 24;
+    let guard = 0;
+    while (receiptBookTitle.scrollWidth > receiptBookTitle.clientWidth + 1 && computed > 13.5 && guard < 20) {
+      computed -= 1.5;
+      receiptBookTitle.style.fontSize = `${computed}px`;
+      if (computed < 20) {
+        receiptBookTitle.style.letterSpacing = "0.04em";
+      }
+      guard++;
+    }
+  }
+
+  window.addEventListener("resize", () => {
+    requestAnimationFrame(fitReceiptTitle);
+  });
+
   function updateBookMasthead(book) {
-    const shortBrand = (book.title || "BOOK")
+    const cleanWords = (book.title || "BOOK")
       .replace(/^(the|a|an)\s+/i, "")
       .split(/\s+/)
-      .slice(0, 2)
-      .join(" ")
-      .toUpperCase()
-      .slice(0, 16);
+      .filter(Boolean);
+    let shortBrand = (cleanWords[0] || "BOOK").toUpperCase();
+    if (cleanWords.length > 1 && `${shortBrand} ${cleanWords[1]}`.length <= 12) {
+      shortBrand = `${shortBrand} ${cleanWords[1].toUpperCase()}`;
+    }
 
-    brandBookShort.textContent = shortBrand || "BOOK";
+    const titleUpper = (book.title || "UNTITLED").trim().toUpperCase();
+    brandBookShort.textContent = shortBrand.slice(0, 14) || "BOOK";
+    brandBookShort.title = book.title || "";
     receiptPublisher.textContent = (book.publisherMeta || "DIGITAL EDITION").toUpperCase();
     receiptPubDate.textContent = (book.pubDate || `${(book.chapters || []).length} CHAPTERS`).toUpperCase();
-    receiptBookTitle.textContent = (book.title || "UNTITLED").toUpperCase();
+    receiptBookTitle.textContent = titleUpper;
+    receiptBookTitle.setAttribute("data-title-tier", computeTitleTier(titleUpper));
     receiptBookSubtitle.textContent = (book.subtitle || `${(book.wordCount || 0).toLocaleString()} WORDS`).toUpperCase();
     receiptAuthor.textContent = (book.author || "").toUpperCase();
     receiptBalanceDue.textContent = (book.balanceDue || "OPEN EDITION").toUpperCase();
     if (book.tagline) receiptTagline.textContent = book.tagline;
+
+    requestAnimationFrame(fitReceiptTitle);
 
     colophonTitle.innerHTML = `<em>${escapeHTML(book.title)}${
       book.subtitle ? ": " + escapeHTML(book.subtitle) : ""
