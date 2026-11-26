@@ -1331,6 +1331,18 @@
     document.title = `${book.title} | ${book.author} — Imprint`;
   }
 
+  function formatChapterBadge(chLabel, fallbackNum) {
+    const lbl = String(chLabel || "").trim();
+    const mNum = lbl.match(/^chapter\s+(\d+|[ivxlcdm]+)$/i);
+    if (mNum) return `Ch. ${mNum[1]}`;
+    const mApp = lbl.match(/^appendix\s+([a-z0-9]+)$/i);
+    if (mApp) return `App. ${mApp[1].toUpperCase()}`;
+    if (/^preface$/i.test(lbl)) return "Pref.";
+    if (/^introduction$/i.test(lbl)) return "Intro";
+    if (/^acknowledg/i.test(lbl)) return "Ack.";
+    return `Ch. ${fallbackNum}`;
+  }
+
   function rebuildChapterMenus(book) {
     const chapters = book.chapters || [];
     const total = chapters.length;
@@ -1345,7 +1357,7 @@
           <button type="button" class="ch-menu-item ${ch.slug === activeChapter ? "is-active" : ""}" role="menuitemradio" aria-checked="${
           ch.slug === activeChapter
         }" data-switch-chapter="${escapeHTML(ch.slug)}">
-            <span class="ch-menu-item__badge">Ch. ${ch.num}</span>
+            <span class="ch-menu-item__badge">${escapeHTML(formatChapterBadge(ch.chapterLabel, ch.num))}</span>
             <span class="ch-menu-item__body">
               <span class="ch-menu-item__title">${escapeHTML(ch.title)}</span>
               <span class="ch-menu-item__meta">${metaStr}</span>
@@ -1414,7 +1426,7 @@
             <button type="button" class="chapter-toc-tab ${isChActive ? "is-active" : ""}" data-switch-chapter="${escapeHTML(
           ch.slug
         )}" aria-expanded="${isChActive}">
-              <span class="chapter-toc-tab__badge">Ch. ${ch.num}</span>
+              <span class="chapter-toc-tab__badge">${escapeHTML(formatChapterBadge(ch.chapterLabel, ch.num))}</span>
               <span class="chapter-toc-tab__title" data-toc-ch-title="${escapeHTML(ch.slug)}">${escapeHTML(
           ch.shortTitle || ch.title
         )}</span>
@@ -1512,8 +1524,41 @@
                     ${capHtml}
                   </figure>`;
                 }
+                if (p.type === "table" && Array.isArray(p.rows)) {
+                  const headRows = p.rows.filter((r) => r.header);
+                  const bodyRows = p.rows.filter((r) => !r.header);
+                  const theadHtml = headRows.length
+                    ? `<thead>${headRows
+                        .map(
+                          (r) =>
+                            `<tr>${(r.cells || []).map((c) => `<th scope="col">${c}</th>`).join("")}</tr>`
+                        )
+                        .join("")}</thead>`
+                    : "";
+                  const tbodyHtml = bodyRows.length
+                    ? `<tbody>${bodyRows
+                        .map((r) => `<tr>${(r.cells || []).map((c) => `<td>${c}</td>`).join("")}</tr>`)
+                        .join("")}</tbody>`
+                    : "";
+                  return `<div class="prose-table-wrap" data-para-idx="${absParaIdx}">
+                    <table class="prose-table">${theadHtml}${tbodyHtml}</table>
+                  </div>`;
+                }
+                if ((p.type === "ul" || p.type === "ol") && Array.isArray(p.items)) {
+                  const listTag = p.type === "ol" ? "ol" : "ul";
+                  const cls = p.type === "ol" ? "prose-list prose-list--ordered" : "prose-list";
+                  return `<${listTag} class="${cls}" data-para-idx="${absParaIdx}">${p.items
+                    .map((it) => `<li>${it}</li>`)
+                    .join("")}</${listTag}>`;
+                }
+                if (p.type === "code") {
+                  return `<pre class="prose-pre" data-para-idx="${absParaIdx}"><code>${p.html}</code></pre>`;
+                }
                 if (p.type === "subhead") {
                   return `<h2 class="section-subhead" data-para-idx="${absParaIdx}">${p.html}</h2>`;
+                }
+                if (p.type === "subhead3") {
+                  return `<h3 class="section-subhead3" data-para-idx="${absParaIdx}">${p.html}</h3>`;
                 }
                 if (p.type === "blockquote") {
                   return `<blockquote class="prose-quote" data-para-idx="${absParaIdx}"><p>${p.html}</p></blockquote>`;
@@ -1536,7 +1581,8 @@
                 ? `<div class="section-ornament" role="separator" aria-label="Section break"><span></span><span></span><span></span><span></span><span></span></div>`
                 : "";
 
-            const refLabel = `Ch. ${ch.num} · ${sec.roman} · pp. ${sec.pageStart || ch.folioStart}–${
+            const chBadge = formatChapterBadge(ch.chapterLabel, ch.num);
+            const refLabel = `${chBadge} · ${sec.roman} · pp. ${sec.pageStart || ch.folioStart}–${
               sec.pageEnd || ch.folioEnd
             }`;
 
@@ -1549,7 +1595,7 @@
               sec.id
             )}" data-chapter-slug="${escapeHTML(ch.slug)}" data-section-ref="${escapeHTML(refLabel)}">
                   <div class="section-visual__bar">
-                    <span class="section-visual__tag">Ch. ${ch.num} · Section ${escapeHTML(sec.roman)} &middot; Visual Guide</span>
+                    <span class="section-visual__tag">${escapeHTML(chBadge)} · Section ${escapeHTML(sec.roman)} &middot; Visual Guide</span>
                     <div class="section-visual__controls">
                       <div class="sv-mode-switch" role="group" aria-label="Visual mode">
                         <button type="button" class="sv-mode-btn ${sec.comicUrl ? "is-active" : ""}" data-view-mode="comic">Story Comic</button>
@@ -1647,12 +1693,15 @@
             </section>`
             : "";
 
+        const chBadge = formatChapterBadge(ch.chapterLabel, ch.num);
         return `
           <article class="chapter ${ch.slug === activeChapter ? "is-active" : ""}" ${
           ch.slug === activeChapter ? "" : "hidden"
         } role="tabpanel"
             data-chapter="${escapeHTML(ch.slug)}"
-            data-short-label="Ch. ${ch.num} · ${escapeHTML(ch.shortTitle || ch.title)}"
+            data-badge="${escapeHTML(chBadge)}"
+            data-chapter-label="${escapeHTML(ch.chapterLabel || `Chapter ${ch.num}`)}"
+            data-short-label="${escapeHTML(chBadge)} · ${escapeHTML(ch.shortTitle || ch.title)}"
             data-menu-title="${escapeHTML(ch.shortTitle || ch.title)}"
             data-full-title="${escapeHTML(ch.chapterLabel)}: ${escapeHTML(ch.title)}"
             data-receipt-item="${escapeHTML(ch.receiptItem || `CHAPTER ${ch.num}`)}"
@@ -1699,6 +1748,8 @@
         slug,
         index: idx,
         num: idx + 1,
+        badge: art.dataset.badge || `Ch. ${idx + 1}`,
+        chapterLabel: art.dataset.chapterLabel || `Chapter ${idx + 1}`,
         article: art,
         endnotesItems,
         endnotesCount: endnotesItems.length,
@@ -2118,11 +2169,11 @@
 
     const totalCh = CHAPTER_ORDER.length;
     const folioText = meta.receiptFolio ? meta.receiptFolio.toLowerCase() : "";
-    topChBadge.textContent = `Ch. ${meta.num}`;
+    topChBadge.textContent = meta.badge || `Ch. ${meta.num}`;
     topChLabel.textContent = meta.menuTitle;
     stageChEyebrow.textContent = folioText
-      ? `Chapter ${meta.num} of ${totalCh} · ${folioText}`
-      : `Chapter ${meta.num} of ${totalCh}`;
+      ? `${meta.chapterLabel} (${meta.num} of ${totalCh}) · ${folioText}`
+      : `${meta.chapterLabel} (${meta.num} of ${totalCh})`;
     stageChTitle.textContent = meta.headingTitle;
     stageChPrev.disabled = meta.index <= 0;
     stageChNext.disabled = meta.index >= totalCh - 1;

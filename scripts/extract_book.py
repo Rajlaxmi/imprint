@@ -85,7 +85,7 @@ def make_short_title(title: str, fallback: str) -> str:
 # ============================================================================
 
 class EpubXHTMLConverter(HTMLParser):
-    BLOCK_TAGS = {"p", "div", "li", "h1", "h2", "h3", "h4", "blockquote"}
+    BLOCK_TAGS = {"p", "div", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"}
     INLINE_EM = {"em", "i"}
     INLINE_STRONG = {"strong", "b"}
     INLINE_PASSTHROUGH = {"sub", "sup", "code"}
@@ -93,9 +93,9 @@ class EpubXHTMLConverter(HTMLParser):
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.blocks = []  # list of {"type": "p"|"blockquote"|"subhead", "html": str, "id": str}
-        self.footnotes_by_id = {}  # id -> html
-        self.note_links = []  # (href, text)
+        self.blocks = []
+        self.footnotes_by_id = {}
+        self.note_links = []
         self._skip_depth = 0
         self._in_blockquote = 0
         self._in_aside_note_id = None
@@ -105,6 +105,16 @@ class EpubXHTMLConverter(HTMLParser):
         self._figure_img_src = ""
         self._figure_img_alt = ""
         self._figure_cap_buf = []
+        self._in_table = False
+        self._table_id = ""
+        self._in_thead = False
+        self._table_rows = []
+        self._cur_row_cells = None
+        self._cur_row_is_header = False
+        self._cur_cell_buf = None
+        self._list_stack = []  # [{"type": "ul"|"ol", "items": [str]}]
+        self._in_pre = False
+        self._pre_buf = []
         self._current_tag = None
         self._current_attrs = {}
         self._buf = []
@@ -116,6 +126,11 @@ class EpubXHTMLConverter(HTMLParser):
             return
         if self._in_aside_note_id is not None:
             self._aside_buf.append(s)
+        elif self._in_pre:
+            self._pre_buf.append(s)
+        elif self._in_table:
+            if self._cur_cell_buf is not None:
+                self._cur_cell_buf.append(s)
         elif self._in_figure:
             self._figure_cap_buf.append(s)
         elif self._current_tag is not None:
@@ -131,7 +146,15 @@ class EpubXHTMLConverter(HTMLParser):
         self._current_tag = None
         self._current_attrs = {}
         self._buf = []
-        if not raw or not strip_tags(raw):
+        if not raw:
+            return
+        has_folio_only = bool(re.search(r"\[\[FOLIO:[^\]]+\]\]", raw)) and not strip_tags(
+            re.sub(r"\[\[FOLIO:[^\]]+\]\]", "", raw)
+        )
+        if not strip_tags(raw) and not has_folio_only:
+            return
+        if has_folio_only:
+            self.blocks.append({"type": "folio_only", "html": raw, "id": ""})
             return
 
         elem_id = attrs.get("id", "")
@@ -149,16 +172,109 @@ class EpubXHTMLConverter(HTMLParser):
             self.footnotes_by_id[elem_id] = raw
             return
 
-        if tag in ("h1", "h2", "h3", "h4"):
-            plain = strip_tags(raw)
+        if self._list_stack:
+            self._list_stack[-1]["items"].append(raw)
+            return
+
+        if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            plain = clean_whitespace(strip_tags(re.sub(r"\[\[FOLIO:[^\]]+\]\]", "", raw)))
+            folios_prefix = "".join(re.findall(r"\[\[FOLIO:[^\]]+\]\]", raw))
+            if not plain:
+                return
             if not self.first_heading and tag in ("h1", "h2"):
                 self.first_heading = plain
+                if folios_prefix:
+                    self.blocks.append({"type": "folio_only", "html": folios_prefix, "id": ""})
                 return
-            self.blocks.append({"type": "subhead", "html": html.escape(plain), "id": elem_id})
+            h_type = "subhead3" if tag in ("h4", "h5", "h6") or "int_niv2" in cls else "subhead"
+            self.blocks.append({"type": h_type, "html": folios_prefix + html.escape(plain), "id": elem_id})
         elif self._in_blockquote > 0 or tag == "blockquote" or "quote" in cls or "extract" in cls:
             self.blocks.append({"type": "blockquote", "html": raw, "id": elem_id})
         else:
             self.blocks.append({"type": "p", "html": raw, "id": elem_id})
+
+    def _handle_inline_start(self, tag, attr_map, epub_type):
+        if tag == "br":
+            self._push_buf("<br>" if self._in_table else " ")
+            return True
+        if tag == "span":
+            if "pagebreak" in epub_type or "doc-pagebreak" in epub_type:
+                pg = attr_map.get("title") or attr_map.get("aria-label") or ""
+                pg_num = re.sub(r"[^0-9ivxlcdmIVXLCDM]", "", pg)
+                if pg_num:
+                    self._push_buf(f"[[FOLIO:{pg_num}]]")
+                return True
+            s_cls = attr_map.get("class", "").lower()
+            if "mev1" in s_cls or "code" in s_cls or "mono" in s_cls:
+                self._inline_stack.append("span_code")
+                self._push_buf("<code>")
+                return True
+            self._inline_stack.append("span_plain")
+            return True
+        if tag in self.INLINE_EM:
+            self._inline_stack.append("em")
+            self._push_buf("<em>")
+            return True
+        if tag in self.INLINE_STRONG:
+            self._inline_stack.append("strong")
+            self._push_buf("<strong>")
+            return True
+        if tag in self.INLINE_PASSTHROUGH:
+            self._inline_stack.append(tag)
+            self._push_buf(f"<{tag}>")
+            return True
+        if tag == "a":
+            href = attr_map.get("href", "")
+            cls = attr_map.get("class", "").lower()
+            is_noteref = (
+                "noteref" in epub_type
+                or "footnote" in cls
+                or "endnote" in cls
+                or bool(re.search(r"#(fn|note|en|ftn|ref)[-_]?\d+", href, re.I))
+            )
+            if is_noteref and href:
+                self._inline_stack.append(("noteref", href))
+                self._push_buf(f"[[NOTEREF:{href}::")
+            elif href.startswith(("http://", "https://")):
+                safe_href = html.escape(href, quote=True)
+                self._inline_stack.append(("extlink", safe_href))
+                self._push_buf(f'<a href="{safe_href}" target="_blank" rel="noopener noreferrer" class="prose-link">')
+            else:
+                self._inline_stack.append(("a", ""))
+            return True
+        return False
+
+    def _handle_inline_end(self, tag):
+        if tag == "span":
+            if self._inline_stack and self._inline_stack[-1] in ("span_code", "span_plain"):
+                kind = self._inline_stack.pop()
+                if kind == "span_code":
+                    self._push_buf("</code>")
+            return True
+        if tag in self.INLINE_EM:
+            if self._inline_stack and self._inline_stack[-1] == "em":
+                self._inline_stack.pop()
+                self._push_buf("</em>")
+            return True
+        if tag in self.INLINE_STRONG:
+            if self._inline_stack and self._inline_stack[-1] == "strong":
+                self._inline_stack.pop()
+                self._push_buf("</strong>")
+            return True
+        if tag in self.INLINE_PASSTHROUGH:
+            if self._inline_stack and self._inline_stack[-1] == tag:
+                self._inline_stack.pop()
+                self._push_buf(f"</{tag}>")
+            return True
+        if tag == "a":
+            if self._inline_stack and isinstance(self._inline_stack[-1], tuple):
+                kind, _ = self._inline_stack.pop()
+                if kind == "noteref":
+                    self._push_buf("]]")
+                elif kind == "extlink":
+                    self._push_buf("</a>")
+            return True
+        return False
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
@@ -177,6 +293,44 @@ class EpubXHTMLConverter(HTMLParser):
             self._flush_block()
             self._in_aside_note_id = elem_id or f"aside_{len(self.footnotes_by_id)+1}"
             self._aside_buf = []
+            return
+
+        if tag == "pre":
+            self._flush_block()
+            self._in_pre = True
+            self._pre_buf = []
+            return
+
+        if self._in_pre:
+            if tag == "br":
+                self._pre_buf.append("\n")
+            return
+
+        if tag == "table":
+            self._flush_block()
+            self._in_table = True
+            self._table_id = elem_id
+            self._in_thead = False
+            self._table_rows = []
+            self._cur_row_cells = None
+            self._cur_cell_buf = None
+            return
+
+        if self._in_table:
+            if tag == "thead":
+                self._in_thead = True
+            elif tag == "tr":
+                self._cur_row_cells = []
+                self._cur_row_is_header = self._in_thead
+            elif tag in ("th", "td"):
+                self._cur_cell_buf = []
+                if tag == "th":
+                    self._cur_row_is_header = True
+            elif tag == "p":
+                if self._cur_cell_buf and self._cur_cell_buf[-1].strip():
+                    self._cur_cell_buf.append("<br>")
+            else:
+                self._handle_inline_start(tag, attr_map, epub_type)
             return
 
         if tag == "figure":
@@ -210,23 +364,12 @@ class EpubXHTMLConverter(HTMLParser):
             return
 
         if self._in_figure:
-            if tag == "br":
-                self._push_buf(" ")
-            elif tag == "span":
-                if "pagebreak" in epub_type or "doc-pagebreak" in epub_type:
-                    pg = attr_map.get("title") or attr_map.get("aria-label") or ""
-                    pg_num = re.sub(r"[^0-9ivxlcdmIVXLCDM]", "", pg)
-                    if pg_num:
-                        self._push_buf(f"[[FOLIO:{pg_num}]]")
-            elif tag in self.INLINE_EM:
-                self._inline_stack.append("em")
-                self._push_buf("<em>")
-            elif tag in self.INLINE_STRONG:
-                self._inline_stack.append("strong")
-                self._push_buf("<strong>")
-            elif tag in self.INLINE_PASSTHROUGH:
-                self._inline_stack.append(tag)
-                self._push_buf(f"<{tag}>")
+            self._handle_inline_start(tag, attr_map, epub_type)
+            return
+
+        if tag in ("ul", "ol"):
+            self._flush_block()
+            self._list_stack.append({"type": tag, "items": []})
             return
 
         if tag == "blockquote":
@@ -234,57 +377,18 @@ class EpubXHTMLConverter(HTMLParser):
             self._in_blockquote += 1
             return
 
-        if tag in ("p", "h1", "h2", "h3", "h4", "li"):
+        if tag in ("p", "h1", "h2", "h3", "h4", "h5", "h6", "li"):
             self._flush_block()
             self._current_tag = tag
             self._current_attrs = attr_map
             return
 
         if tag == "div" and self._current_tag is None:
-            # Only treat leaf-ish divs with classes/ids if needed; nested <p> will flush cleanly
             self._current_tag = "div"
             self._current_attrs = attr_map
             return
 
-        if tag == "br":
-            self._push_buf(" ")
-            return
-
-        if tag == "span":
-            if "pagebreak" in epub_type or "doc-pagebreak" in epub_type:
-                pg = attr_map.get("title") or attr_map.get("aria-label") or ""
-                pg_num = re.sub(r"[^0-9ivxlcdmIVXLCDM]", "", pg)
-                if pg_num:
-                    self._push_buf(f'[[FOLIO:{pg_num}]]')
-            return
-
-        if tag in self.INLINE_EM:
-            self._inline_stack.append("em")
-            self._push_buf("<em>")
-        elif tag in self.INLINE_STRONG:
-            self._inline_stack.append("strong")
-            self._push_buf("<strong>")
-        elif tag in self.INLINE_PASSTHROUGH:
-            self._inline_stack.append(tag)
-            self._push_buf(f"<{tag}>")
-        elif tag == "a":
-            href = attr_map.get("href", "")
-            cls = attr_map.get("class", "").lower()
-            is_noteref = (
-                "noteref" in epub_type
-                or "footnote" in cls
-                or "endnote" in cls
-                or bool(re.search(r"#(fn|note|en|ftn|ref)[-_]?\d+", href, re.I))
-            )
-            if is_noteref and href:
-                self._inline_stack.append(("noteref", href))
-                self._push_buf(f"[[NOTEREF:{href}::")
-            elif href.startswith(("http://", "https://")):
-                safe_href = html.escape(href, quote=True)
-                self._inline_stack.append(("extlink", safe_href))
-                self._push_buf(f'<a href="{safe_href}" target="_blank" rel="noopener noreferrer" class="prose-link">')
-            else:
-                self._inline_stack.append(("a", ""))
+        self._handle_inline_start(tag, attr_map, epub_type)
 
     def handle_endtag(self, tag):
         tag = tag.lower()
@@ -301,6 +405,63 @@ class EpubXHTMLConverter(HTMLParser):
                 self.footnotes_by_id[self._in_aside_note_id] = raw
             self._in_aside_note_id = None
             self._aside_buf = []
+            return
+
+        if tag == "pre" and self._in_pre:
+            code_raw = "".join(self._pre_buf).strip("\r\n")
+            self._in_pre = False
+            self._pre_buf = []
+            if code_raw.strip():
+                self.blocks.append({"type": "code", "html": code_raw, "id": ""})
+            return
+
+        if self._in_pre:
+            return
+
+        if self._in_table:
+            if tag == "thead":
+                self._in_thead = False
+            elif tag in ("th", "td"):
+                if self._cur_cell_buf is not None and self._cur_row_cells is not None:
+                    cell_h = re.sub(r"[ \t]+", " ", "".join(self._cur_cell_buf)).strip()
+                    cell_h = re.sub(r"^(?:<br>\s*)+|(?:\s*<br>)+$", "", cell_h).strip()
+                    self._cur_row_cells.append(cell_h)
+                self._cur_cell_buf = None
+            elif tag == "tr":
+                if self._cur_row_cells and any(strip_tags(c) for c in self._cur_row_cells):
+                    self._table_rows.append({
+                        "header": self._cur_row_is_header,
+                        "cells": self._cur_row_cells,
+                    })
+                self._cur_row_cells = None
+            elif tag == "table":
+                if self._table_rows:
+                    has_explicit_hdr = any(r["header"] for r in self._table_rows)
+                    if not has_explicit_hdr and len(self._table_rows) >= 2:
+                        r0_non_empty = [c for c in self._table_rows[0]["cells"] if strip_tags(c)]
+                        if r0_non_empty and all(
+                            re.fullmatch(r"(?:\[\[FOLIO:[^\]]+\]\]\s*)*<strong>[\s\S]+</strong>", c.strip())
+                            for c in r0_non_empty
+                        ):
+                            self._table_rows[0]["header"] = True
+                    for r in self._table_rows:
+                        if r["header"]:
+                            r["cells"] = [
+                                re.sub(r"^((?:\[\[FOLIO:[^\]]+\]\]\s*)*)<strong>([\s\S]+)</strong>$", r"\1\2", c.strip())
+                                for c in r["cells"]
+                            ]
+                    flat_html = " | ".join(c for r in self._table_rows for c in r["cells"] if c)
+                    self.blocks.append({
+                        "type": "table",
+                        "rows": self._table_rows,
+                        "html": flat_html,
+                        "id": self._table_id,
+                    })
+                self._in_table = False
+                self._table_rows = []
+                self._inline_stack.clear()
+            else:
+                self._handle_inline_end(tag)
             return
 
         if tag == "figure" and self._in_figure:
@@ -323,15 +484,20 @@ class EpubXHTMLConverter(HTMLParser):
             return
 
         if self._in_figure:
-            if tag in self.INLINE_EM and self._inline_stack and self._inline_stack[-1] == "em":
-                self._inline_stack.pop()
-                self._push_buf("</em>")
-            elif tag in self.INLINE_STRONG and self._inline_stack and self._inline_stack[-1] == "strong":
-                self._inline_stack.pop()
-                self._push_buf("</strong>")
-            elif tag in self.INLINE_PASSTHROUGH and self._inline_stack and self._inline_stack[-1] == tag:
-                self._inline_stack.pop()
-                self._push_buf(f"</{tag}>")
+            self._handle_inline_end(tag)
+            return
+
+        if tag in ("ul", "ol") and self._list_stack:
+            if self._current_tag == "li":
+                self._flush_block()
+            lst = self._list_stack.pop()
+            if lst["items"]:
+                self.blocks.append({
+                    "type": lst["type"],
+                    "items": lst["items"],
+                    "html": " ".join(lst["items"]),
+                    "id": "",
+                })
             return
 
         if tag == "blockquote":
@@ -339,30 +505,12 @@ class EpubXHTMLConverter(HTMLParser):
             self._in_blockquote = max(0, self._in_blockquote - 1)
             return
 
-        if tag in ("p", "h1", "h2", "h3", "h4", "li", "div"):
+        if tag in ("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "div"):
             if self._current_tag == tag:
                 self._flush_block()
             return
 
-        if tag in self.INLINE_EM:
-            if self._inline_stack and self._inline_stack[-1] == "em":
-                self._inline_stack.pop()
-                self._push_buf("</em>")
-        elif tag in self.INLINE_STRONG:
-            if self._inline_stack and self._inline_stack[-1] == "strong":
-                self._inline_stack.pop()
-                self._push_buf("</strong>")
-        elif tag in self.INLINE_PASSTHROUGH:
-            if self._inline_stack and self._inline_stack[-1] == tag:
-                self._inline_stack.pop()
-                self._push_buf(f"</{tag}>")
-        elif tag == "a":
-            if self._inline_stack and isinstance(self._inline_stack[-1], tuple):
-                kind, _ = self._inline_stack.pop()
-                if kind == "noteref":
-                    self._push_buf("]]")
-                elif kind == "extlink":
-                    self._push_buf("</a>")
+        self._handle_inline_end(tag)
 
     def handle_data(self, data):
         if self._skip_depth > 0 or not data:
@@ -374,24 +522,38 @@ def parse_epub_toc_map(zf: zipfile.ZipFile, opf_dir: str, manifest: dict, opf_ro
     """Returns mapping of normalized zip href -> TOC label."""
     toc_map = {}
 
-    # 1. Check EPUB3 nav item
+    # 1. Check EPUB3 nav item (strictly isolate toc nav, skipping page-list / landmarks)
     for item_id, info in manifest.items():
         props = info.get("properties", "")
         if "nav" in props.split():
             nav_path = info["path"]
             try:
                 raw = zf.read(nav_path).decode("utf-8", errors="replace")
-                for m in re.finditer(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', raw, re.I | re.S):
+                toc_nav_m = re.search(
+                    r'<nav\b[^>]*(?:epub:type=["\'][^"\']*\btoc\b|role=["\']doc-toc["\'])[^>]*>([\s\S]*?)</nav>',
+                    raw,
+                    re.I,
+                )
+                scan_region = toc_nav_m.group(1) if toc_nav_m else re.sub(
+                    r'<nav\b[^>]*(?:page-list|pagelist)[^>]*>[\s\S]*?</nav>', '', raw, flags=re.I
+                )
+                for m in re.finditer(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', scan_region, re.I | re.S):
                     href_raw, label_html = m.group(1), m.group(2)
-                    doc_part, _ = urldefrag(unquote(href_raw))
+                    doc_part, frag = urldefrag(unquote(href_raw))
                     if not doc_part:
                         continue
                     resolved = posixpath.normpath(posixpath.join(posixpath.dirname(nav_path), doc_part))
-                    label = strip_tags(label_html)
-                    if label and resolved not in toc_map:
+                    label = clean_whitespace(strip_tags(label_html))
+                    if not label or re.fullmatch(r"\d+", label):
+                        continue
+                    # Prefer whole-document TOC link (no #fragment) over nested subsection anchor
+                    if resolved not in toc_map or (not frag and toc_map.get(f"__frag__{resolved}")):
                         toc_map[resolved] = label
+                        toc_map[f"__frag__{resolved}"] = bool(frag)
             except Exception:
                 pass
+    for k in [k for k in toc_map if k.startswith("__frag__")]:
+        del toc_map[k]
 
     # 2. Check EPUB2 NCX item
     for item_id, info in manifest.items():
@@ -517,36 +679,77 @@ def extract_epub_native(epub_path: str, out_dir: str = None) -> dict:
                 "blocks": parser.blocks,
             })
 
-        # Group spine items into logical chapters
+        # Group spine items into logical chapters (handling standalone chapter/appendix opener pages!)
         raw_chapters = []
+        pending_opener_title = ""
+        pending_opener_blocks = []
+
         for doc in parsed_docs:
-            label = doc["toc_title"] or doc["heading"]
-            word_cnt = sum(count_words(b["html"]) for b in doc["blocks"])
-            if word_cnt == 0:
+            toc_t = clean_whitespace(doc["toc_title"])
+            head_t = clean_whitespace(doc["heading"])
+            label = toc_t or head_t
+            non_folio_blocks = [b for b in doc["blocks"] if b["type"] != "folio_only"]
+            fig_or_tbl_cnt = sum(1 for b in non_folio_blocks if b["type"] in ("figure", "table"))
+            word_cnt = sum(count_words(b.get("html", "")) for b in non_folio_blocks if b["type"] != "figure")
+
+            # Standalone chapter/part/appendix opener page (0-25 words, no figures/tables, has heading)
+            if word_cnt < 25 and fig_or_tbl_cnt == 0:
+                if label and not SKIP_TOC_PATTERNS.search(label) and not NOTES_TOC_PATTERNS.search(label):
+                    pending_opener_title = label
+                    pending_opener_blocks.extend([b for b in doc["blocks"] if b["type"] == "folio_only"])
                 continue
-            if label and SKIP_TOC_PATTERNS.search(label) and word_cnt < 900:
+
+            if label and SKIP_TOC_PATTERNS.search(label) and word_cnt < 900 and not pending_opener_title:
                 continue
-            if label and NOTES_TOC_PATTERNS.search(label):
+            if label and NOTES_TOC_PATTERNS.search(label) and not pending_opener_title:
                 continue
+
+            effective_blocks = pending_opener_blocks + list(doc["blocks"])
+            pending_opener_blocks = []
+
+            if pending_opener_title:
+                chosen_title = pending_opener_title
+                pending_opener_title = ""
+                raw_chapters.append({
+                    "path": doc["path"],
+                    "title": chosen_title,
+                    "blocks": effective_blocks,
+                })
+                continue
+
             if not raw_chapters:
                 if word_cnt < 120 and not label:
                     continue
                 raw_chapters.append({
                     "path": doc["path"],
                     "title": label or "Chapter 1",
-                    "blocks": list(doc["blocks"]),
+                    "blocks": effective_blocks,
                 })
             else:
-                # Merge continuation spine splits without their own TOC title
-                if not doc["toc_title"] and (word_cnt < 250 or not doc["heading"]):
-                    raw_chapters[-1]["blocks"].extend(doc["blocks"])
+                prev_title = raw_chapters[-1].get("title", "")
+                is_prev_appendix = bool(re.match(r"^appendix\b", prev_title, re.I))
+                is_new_major = bool(
+                    re.match(r"^(chapter|part|appendix|preface|introduction|acknowledg|epilogue|glossary)\b", label or "", re.I)
+                )
+                # Merge continuation spine splits OR sub-sections inside an Appendix (like Appendix B reading categories!)
+                if (not toc_t and (word_cnt < 250 or not head_t)) or (
+                    is_prev_appendix and not is_new_major and word_cnt < 1200
+                ):
+                    if head_t and head_t.lower() not in prev_title.lower():
+                        raw_chapters[-1]["blocks"].append({
+                            "type": "subhead",
+                            "html": html.escape(head_t),
+                            "id": "",
+                            "doc_path": doc["path"],
+                        })
+                    raw_chapters[-1]["blocks"].extend(effective_blocks)
                 else:
                     if word_cnt < 90 and SKIP_TOC_PATTERNS.search(label or ""):
                         continue
                     raw_chapters.append({
                         "path": doc["path"],
                         "title": label or f"Chapter {len(raw_chapters) + 1}",
-                        "blocks": list(doc["blocks"]),
+                        "blocks": effective_blocks,
                     })
 
         # Filter tiny non-chapter front-matter remnants (< 45 words) if real chapters exist
@@ -598,7 +801,7 @@ def extract_epub_native(epub_path: str, out_dir: str = None) -> dict:
                 )
 
             for b_idx, b in enumerate(ch["blocks"]):
-                b_html = b["html"]
+                b_html = b.get("html", "")
 
                 # Check native folio markers
                 native_folios = re.findall(r"\[\[FOLIO:([^\]]+)\]\]", b_html)
@@ -607,6 +810,9 @@ def extract_epub_native(epub_path: str, out_dir: str = None) -> dict:
                         synthetic_page = int(re.sub(r"\D", "", native_folios[0]) or synthetic_page)
                     except ValueError:
                         pass
+
+                if b["type"] == "folio_only":
+                    continue
 
                 if b["type"] == "figure":
                     raw_src = (b.get("raw_src") or "").strip()
@@ -643,6 +849,60 @@ def extract_epub_native(epub_path: str, out_dir: str = None) -> dict:
                     pg = fm.group(1)
                     return f'<span class="folio-marker" data-page="{html.escape(pg)}" title="Page {html.escape(pg)}">p. {html.escape(pg)}</span>'
 
+                if b["type"] == "table":
+                    cleaned_rows = []
+                    for r in b.get("rows", []):
+                        c_cells = []
+                        for cell in r.get("cells", []):
+                            ch_clean = re.sub(r"\[\[FOLIO:[^\]]+\]\]", "", cell)
+                            ch_clean = re.sub(r"\[\[NOTEREF:([^:]+)::(.*?)\]\]", replace_noteref, ch_clean).strip()
+                            c_cells.append(ch_clean)
+                        cleaned_rows.append({"header": bool(r.get("header")), "cells": c_cells})
+                    flat_plain = " | ".join(strip_tags(c) for r in cleaned_rows for c in r["cells"] if strip_tags(c))
+                    words_on_page += count_words(flat_plain)
+                    paragraphs.append({
+                        "type": "table",
+                        "rows": cleaned_rows,
+                        "html": html.escape(flat_plain),
+                        "page": synthetic_page,
+                    })
+                    continue
+
+                if b["type"] in ("ul", "ol"):
+                    cleaned_items = []
+                    for it in b.get("items", []):
+                        it_clean = re.sub(r"\[\[FOLIO:[^\]]+\]\]", "", it)
+                        it_clean = re.sub(r"\[\[NOTEREF:([^:]+)::(.*?)\]\]", replace_noteref, it_clean).strip()
+                        if strip_tags(it_clean):
+                            cleaned_items.append(it_clean)
+                    if cleaned_items:
+                        flat_plain = " ".join(strip_tags(x) for x in cleaned_items)
+                        words_on_page += count_words(flat_plain)
+                        paragraphs.append({
+                            "type": b["type"],
+                            "items": cleaned_items,
+                            "html": html.escape(flat_plain),
+                            "page": synthetic_page,
+                        })
+                    continue
+
+                if b["type"] == "code":
+                    paragraphs.append({
+                        "type": "code",
+                        "html": b_html,
+                        "page": synthetic_page,
+                    })
+                    continue
+
+                if b["type"] in ("subhead", "subhead3"):
+                    clean_sub = re.sub(r"\[\[FOLIO:[^\]]+\]\]", "", b_html).strip()
+                    paragraphs.append({
+                        "type": b["type"],
+                        "html": clean_sub,
+                        "page": synthetic_page,
+                    })
+                    continue
+
                 b_html = re.sub(r"\[\[FOLIO:([^\]]+)\]\]", replace_folio, b_html)
                 b_html = re.sub(r"\[\[NOTEREF:([^:]+)::(.*?)\]\]", replace_noteref, b_html)
 
@@ -669,17 +929,27 @@ def extract_epub_native(epub_path: str, out_dir: str = None) -> dict:
             words_on_page = 0
 
             raw_title = clean_whitespace(ch["title"])
-            # Separate "Chapter 1: Title" if present
+            # Preserve explicit book labels (Preface, Chapter 0, Chapter 1, Appendix A, Acknowledgements)
             ch_label = chapter_word_label(ch_num)
             clean_title = raw_title
             m_head = re.match(
-                r"^(chapter|part|section)\s+([0-9ivxlcdm]+|[a-z-]+)\s*[:.\-–—]+\s*(.+)$",
+                r"^(chapter|part|appendix|section)\s+([0-9ivxlcdm]+|[a-z-]+)\s*[:.\-–—]+\s*(.+)$",
+                raw_title,
+                re.I,
+            )
+            m_front = re.match(
+                r"^(preface|foreword|introduction|prologue|epilogue|afterword|acknowledgements?|acknowledgments?|glossary)(?:\s*[:.\-–—]+\s*(.+))?$",
                 raw_title,
                 re.I,
             )
             if m_head:
-                ch_label = f"{m_head.group(1).title()} {m_head.group(2)}"
+                kind_w = m_head.group(1).title()
+                id_w = m_head.group(2).upper() if kind_w == "Appendix" and len(m_head.group(2)) == 1 else m_head.group(2)
+                ch_label = f"{kind_w} {id_w}"
                 clean_title = m_head.group(3).strip()
+            elif m_front:
+                ch_label = m_front.group(1).title()
+                clean_title = (m_front.group(2) or m_front.group(1).title()).strip()
 
             chapters.append({
                 "slug": slug,
