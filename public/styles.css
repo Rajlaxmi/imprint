@@ -50,7 +50,7 @@
   --line-height: 1.74;
   --measure: 52rem;
   --bar-height: 52px;
-  --left-rail-w: 15.5rem;
+  --left-rail-w: clamp(20.5rem, 21vw, 24rem);
   --right-rail-w: 22.5rem;
 }
 
@@ -558,7 +558,7 @@ body {
   display: grid;
   grid-template-columns: var(--left-rail-w) minmax(0, 1fr) var(--right-rail-w);
   align-items: start;
-  max-width: 120rem;
+  max-width: 128rem;
   margin: 0 auto;
 }
 
@@ -1966,7 +1966,7 @@ mark.find-hit.is-current { background: var(--highlight-active); color: #111; out
     bottom: 0;
     height: 100vh;
     z-index: 240;
-    width: min(21rem, 88vw);
+    width: min(24.5rem, 90vw);
     box-shadow: var(--shadow-lg);
     transition: transform 0.22s ease;
   }
@@ -2845,9 +2845,9 @@ html[data-theme="night"] .nb-frame {
 .chapter-toc-tab {
   width: 100%;
   display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.55rem 0.65rem;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.62rem 0.72rem;
   border: none;
   background: var(--bg-subtle);
   color: var(--ink);
@@ -2864,13 +2864,14 @@ html[data-theme="night"] .nb-frame {
 
 .chapter-toc-tab__badge {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  padding: 0.1rem 0.36rem;
+  padding: 0.12rem 0.42rem;
   border-radius: 4px;
   background: var(--vermilion);
   color: #fff;
   flex-shrink: 0;
+  margin-top: 0.04rem;
 }
 
 .chapter-toc-group:not(.is-active) .chapter-toc-tab__badge {
@@ -2881,17 +2882,19 @@ html[data-theme="night"] .nb-frame {
 
 .chapter-toc-tab__title {
   flex: 1;
-  font-size: 0.8rem;
+  font-size: 0.84rem;
   font-weight: 700;
+  line-height: 1.3;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .chapter-toc-tab__chevron {
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   color: var(--ink-muted);
+  margin-top: 0.12rem;
+  flex-shrink: 0;
   transition: transform 0.18s ease;
 }
 

@@ -8,7 +8,7 @@
   --body-size: 1.02rem;
   --line-height: 1.62;
   --measure: 52rem;
-  --left-rail-w: 15.5rem;
+  --left-rail-w: clamp(20.5rem, 21vw, 24rem);
   --right-rail-w: 22.5rem;
 }
 
@@ -22,7 +22,7 @@ html[data-width="book"] { --measure: 52rem; }
 html[data-width="wide"] { --measure: 64rem; }
 
 .workspace-layout {
-  max-width: 120rem;
+  max-width: 128rem;
   margin: 0 auto;
 }
 
@@ -66,7 +66,15 @@ html[data-width="wide"] { --measure: 64rem; }
 
 .ch-picker {
   min-width: 0;
-  max-width: 13.5rem;
+  max-width: 18.5rem;
+}
+
+.ch-menu-panel {
+  width: min(29rem, calc(100vw - 1.5rem));
+}
+
+.ch-menu-panel--stage {
+  width: min(33rem, calc(100vw - 2rem));
 }
 
 .ch-picker__btn {
@@ -820,20 +828,26 @@ html[data-theme="night"] .pdf-figure {
   margin: 1.9rem 0;
 }
 
+.left-rail__nav {
+  padding: 0.7rem 0.72rem;
+}
+
 .toc-link {
-  padding: 0.42rem 0.5rem;
+  grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  padding: 0.5rem 0.62rem;
 }
 
 .toc-link__title {
-  font-size: 0.78rem;
-  line-height: 1.24;
+  font-size: 0.84rem;
+  line-height: 1.32;
   overflow-wrap: break-word;
   hyphens: none;
 }
 
 .toc-link__sub {
-  font-size: 0.68rem;
-  line-height: 1.28;
+  font-size: 0.73rem;
+  line-height: 1.34;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
