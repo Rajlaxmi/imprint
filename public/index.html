@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="paper" data-size="md" data-width="book" data-folios="show">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Book Viz Studio | Interactive Gemini Book Edition</title>
+  <meta name="description" content="Upload any EPUB or PDF book and let Gemini process it in the background into an interactive editorial edition with full prose, 16:9 Story Comics, animated SVG diagrams, margin notes, and Gemini 4 Neon AI study chat." />
+  <link rel="stylesheet" href="styles.css?v=1" />
+  <link rel="stylesheet" href="studio.css?v=1" />
+</head>
+<body>
+  <a class="skip-link" href="#chapter-text">Skip to chapter text</a>
+
+  <!-- Reading Progress Bar -->
+  <div class="progress-rail" aria-hidden="true">
+    <div class="progress-bar" id="progressBar"></div>
+  </div>
+
+  <!-- Sticky Reader Navigation Bar -->
+  <header class="reader-bar" id="readerBar">
+    <div class="reader-bar__inner">
+      <div class="reader-bar__brand">
+        <button type="button" class="bar-btn bar-btn--mobile-rail" id="leftRailToggle" aria-expanded="false" aria-controls="leftRail" title="Toggle Sections sidebar">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M2.5 4H13.5M2.5 8H10.5M2.5 12H13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span class="bar-btn__label">Sections</span>
+        </button>
+
+        <button type="button" class="bar-btn library-pill-btn" id="libraryOpenBtn" title="Open Book Library &amp; Upload EPUB / PDF">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M2.5 3.25H6.5C7.33 3.25 8 3.92 8 4.75V13.25C8 12.56 7.44 12 6.75 12H2.5V3.25Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+            <path d="M13.5 3.25H9.5C8.67 3.25 8 3.92 8 4.75V13.25C8 12.56 8.56 12 9.25 12H13.5V3.25Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+          <span class="bar-btn__label">Library / + Upload</span>
+        </button>
+
+        <a href="#top" class="brand-pill" id="brandBookPill" title="Return to top">
+          <span class="brand-pill__dot" aria-hidden="true"></span>
+          <span class="brand-pill__book" id="brandBookShort">BOOK VIZ</span>
+        </a>
+
+        <div class="ch-picker" id="topChPicker" hidden>
+          <button type="button" class="bar-btn ch-picker__btn" id="topChMenuToggle" aria-expanded="false" aria-controls="topChMenuPanel" title="Select chapter">
+            <span class="ch-picker__badge" id="topChBadge">Ch. 1</span>
+            <span class="ch-picker__label" id="topChLabel">Chapter One</span>
+            <span class="ch-picker__caret" aria-hidden="true">&#9662;</span>
+          </button>
+          <div class="dropdown-panel ch-menu-panel ch-menu-panel--top" id="topChMenuPanel" role="menu" aria-label="Select book chapter" hidden></div>
+        </div>
+
+        <span class="reader-bar__sep" id="topBarSep" aria-hidden="true" hidden>/</span>
+        <span class="reader-bar__section" id="currentSectionLabel">Upload an EPUB or PDF to begin</span>
+      </div>
+
+      <div class="reader-bar__actions">
+        <!-- Live Background Gemini Enrichment Pill -->
+        <button type="button" class="bar-btn job-live-pill" id="liveJobPill" title="Background Gemini book enrichment status — click to view Library details" hidden>
+          <span class="job-live-pill__spinner" aria-hidden="true"></span>
+          <span class="job-live-pill__text" id="liveJobPillText">Processing…</span>
+        </button>
+
+        <span class="reading-stat" id="readingStat" aria-live="polite"></span>
+
+        <button type="button" class="bar-btn neon-pill is-connected" id="aiModelPillBtn" title="Open Gemini 4 Neon AI Chat panel">
+          <span class="neon-pill__dot" id="aiStatusDot" aria-hidden="true"></span>
+          <span class="bar-btn__label" id="aiStatusText">Gemini 4 Neon</span>
+        </button>
+
+        <button type="button" class="bar-btn" id="searchToggle" aria-expanded="false" aria-controls="searchPanel" title="Find in chapter (/)">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M10.5 10.5L13.5 13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span class="bar-btn__label">Find</span>
+        </button>
+
+        <button type="button" class="bar-btn" id="prefsToggle" aria-expanded="false" aria-controls="prefsPanel" title="Typography &amp; Theme">
+          <span class="bar-btn__aa" aria-hidden="true">Aa</span>
+          <span class="bar-btn__label">Display</span>
+        </button>
+
+        <button type="button" class="bar-btn bar-btn--notes-toggle" id="rightRailToggle" aria-expanded="false" aria-controls="rightRail" title="Toggle Notes &amp; Highlights panel">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M3 2.75H13C13.4142 2.75 13.75 3.08579 13.75 3.5V11C13.75 11.4142 13.4142 11.75 13 11.75H6L2.75 14V3.5C2.75 3.08579 3.08579 2.75 3.5 2.75Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+          <span class="bar-btn__label">Notes</span>
+          <span class="notes-badge" id="notesCountBadge">0</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Dropdown: Find in Chapter -->
+    <div class="dropdown-panel search-panel" id="searchPanel" role="search" aria-label="Search within active chapter" hidden>
+      <div class="search-box">
+        <input type="search" id="searchInput" class="search-box__input" placeholder="Search text in current chapter…" autocomplete="off" />
+        <span class="search-box__count" id="searchCount">0 / 0</span>
+        <button type="button" class="search-nav-btn" id="searchPrev" title="Previous match (Shift+Enter)" aria-label="Previous match" disabled>&uarr;</button>
+        <button type="button" class="search-nav-btn" id="searchNext" title="Next match (Enter)" aria-label="Next match" disabled>&darr;</button>
+        <button type="button" class="search-nav-btn" id="searchClear" title="Close search (Esc)" aria-label="Close search">&times;</button>
+      </div>
+    </div>
+
+    <!-- Dropdown: Reader Display Preferences -->
+    <div class="dropdown-panel prefs-panel" id="prefsPanel" aria-label="Reading display settings" hidden>
+      <div class="prefs-group">
+        <span class="prefs-group__label">Paper &amp; Ink</span>
+        <div class="segmented" role="group" aria-label="Color theme">
+          <button type="button" class="segmented__btn is-active" data-set-theme="paper">Paper</button>
+          <button type="button" class="segmented__btn" data-set-theme="sepia">Sepia</button>
+          <button type="button" class="segmented__btn" data-set-theme="night">Night</button>
+        </div>
+      </div>
+
+      <div class="prefs-group">
+        <span class="prefs-group__label">Type Size</span>
+        <div class="segmented" role="group" aria-label="Font size">
+          <button type="button" class="segmented__btn" data-set-size="sm">Small</button>
+          <button type="button" class="segmented__btn is-active" data-set-size="md">Book</button>
+          <button type="button" class="segmented__btn" data-set-size="lg">Large</button>
+          <button type="button" class="segmented__btn" data-set-size="xl">X-Large</button>
+        </div>
+      </div>
+
+      <div class="prefs-group">
+        <span class="prefs-group__label">Measure</span>
+        <div class="segmented" role="group" aria-label="Column measure">
+          <button type="button" class="segmented__btn is-active" data-set-width="book">Classic</button>
+          <button type="button" class="segmented__btn" data-set-width="wide">Wide</button>
+        </div>
+      </div>
+
+      <div class="prefs-group prefs-group--row">
+        <label class="prefs-toggle-label" for="folioToggle">Edition Page Markers (p. N)</label>
+        <input type="checkbox" id="folioToggle" class="prefs-checkbox" checked />
+      </div>
+    </div>
+  </header>
+
+  <!-- Melville House Receipt-Inspired Hero Masthead -->
+  <section class="hero" id="top" aria-label="Book masthead">
+    <div class="hero__backdrop">
+      <div class="receipt-card">
+        <div class="receipt-card__teeth receipt-card__teeth--top" aria-hidden="true"></div>
+        <div class="receipt-card__body">
+          <div class="receipt-meta">
+            <span id="receiptPublisher">BOOK VIZ STUDIO</span>
+            <span id="receiptPubDate">GEMINI EDITION</span>
+          </div>
+          <div class="receipt-rule" aria-hidden="true"></div>
+
+          <p class="receipt-book-title" id="receiptBookTitle">BOOK VIZ</p>
+          <p class="receipt-book-subtitle" id="receiptBookSubtitle">UPLOAD ANY EPUB OR PDF</p>
+          <p class="receipt-author" id="receiptAuthor">INTERACTIVE DIGITAL EDITION</p>
+
+          <div class="receipt-rule" aria-hidden="true"></div>
+
+          <dl class="receipt-ledger">
+            <div class="receipt-ledger__row">
+              <dt>ITEM</dt>
+              <dd id="receiptItem">AWAITING BOOK</dd>
+            </div>
+            <div class="receipt-ledger__row">
+              <dt>FOLIO</dt>
+              <dd id="receiptFolio">&mdash;</dd>
+            </div>
+            <div class="receipt-ledger__row">
+              <dt>ENDNOTES</dt>
+              <dd id="receiptNotes">&mdash;</dd>
+            </div>
+            <div class="receipt-ledger__row receipt-ledger__row--total">
+              <dt>BALANCE DUE</dt>
+              <dd id="receiptBalanceDue">OPEN LEDGER</dd>
+            </div>
+          </dl>
+
+          <div class="receipt-rule" aria-hidden="true"></div>
+          <p class="receipt-tagline" id="receiptTagline">“FULL BOOK PROSE · STORY COMICS · ANIMATED DIAGRAMS · AI STUDY COMPANION”</p>
+          <div class="receipt-actions-row">
+            <a href="#chapter-text" class="receipt-cta" id="receiptReadCta">BEGIN READING &darr;</a>
+            <button type="button" class="receipt-cta receipt-cta--alt" id="receiptUploadCta">+ UPLOAD EPUB / PDF</button>
+          </div>
+        </div>
+        <div class="receipt-card__teeth receipt-card__teeth--bottom" aria-hidden="true"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Three-Column Interactive Reading Workspace -->
+  <div class="workspace-layout" id="workspaceLayout">
+
+    <!-- LEFT SIDEBAR: Persistent Clickable Chapters & Sections -->
+    <aside class="left-rail" id="leftRail" aria-label="Chapter sections">
+      <div class="rail-header">
+        <div>
+          <span class="rail-eyebrow">Contents</span>
+          <h2 class="rail-title">Chapter Sections</h2>
+        </div>
+        <button type="button" class="rail-close-btn" id="leftRailClose" aria-label="Close sections sidebar">&times;</button>
+      </div>
+
+      <nav class="left-rail__nav" id="leftTocNav" aria-label="Book chapters and sections"></nav>
+
+      <div class="left-rail__tip">
+        <p><strong>Annotate:</strong> Select any text in the chapter to highlight it, attach a margin note, or ask Gemini 4 Neon.</p>
+      </div>
+    </aside>
+
+    <!-- CENTER: Main Chapter Content (Tabbed Chapter Panels) -->
+    <main class="book-stage" id="chapter-text">
+      <!-- Empty Library Onboarding State (Shown Only Before First Book Is Loaded) -->
+      <section class="empty-stage-card" id="emptyStageCard">
+        <p class="empty-stage-card__eyebrow">Interactive Editorial Workbench</p>
+        <h1 class="empty-stage-card__title">Upload any EPUB or PDF book</h1>
+        <p class="empty-stage-card__desc">
+          Your book’s <strong>complete original text</strong>, blockquotes, page folios, and footnotes are extracted immediately so you can read right away—while Gemini works in the background to illustrate <strong>16:9 Story Comics</strong>, build <strong>animated SVG concept diagrams</strong>, and power <strong>Gemini 4 Neon</strong> margin-note study chat.
+        </p>
+        <button type="button" class="studio-primary-btn" id="emptyStageUploadBtn">Open Library &amp; Upload Book</button>
+      </section>
+
+      <!-- Active Book Stage Chapter Menu Bar -->
+      <div class="stage-ch-bar" id="stageChapterBar" hidden>
+        <div class="stage-ch-bar__picker">
+          <button type="button" class="stage-ch-trigger" id="stageChMenuToggle" aria-expanded="false" aria-controls="stageChMenuPanel" title="Open chapters menu">
+            <span class="stage-ch-trigger__eyebrow" id="stageChEyebrow">Chapter 1</span>
+            <span class="stage-ch-trigger__main">
+              <span class="stage-ch-trigger__title" id="stageChTitle">Select Chapter</span>
+              <span class="stage-ch-trigger__caret" aria-hidden="true">&#9662;</span>
+            </span>
+          </button>
+          <div class="ch-menu-panel ch-menu-panel--stage" id="stageChMenuPanel" role="menu" aria-label="Select book chapter" hidden></div>
+        </div>
+        <div class="stage-ch-bar__steppers" role="group" aria-label="Chapter navigation">
+          <button type="button" class="stage-ch-step" id="stageChPrev" title="Previous chapter" aria-label="Previous chapter">&larr; Prev</button>
+          <button type="button" class="stage-ch-step" id="stageChNext" title="Next chapter" aria-label="Next chapter">Next &rarr;</button>
+        </div>
+      </div>
+
+      <!-- Dynamic Chapter Articles Container -->
+      <div id="chaptersContainer"></div>
+    </main>
+
+    <!-- RIGHT SIDEBAR: Notes & Highlights | AI Chat | Book Endnotes -->
+    <aside class="right-rail" id="rightRail" aria-label="Notes, AI Chat, and Endnotes">
+      <div class="rail-header rail-header--tabs">
+        <div class="rail-tabs" role="tablist" aria-label="Right sidebar panels">
+          <button type="button" class="rail-tab is-active" id="tabNotesBtn" role="tab" aria-selected="true" aria-controls="userNotesPane">
+            Notes
+            <span class="rail-tab__count" id="notesTabCount">0</span>
+          </button>
+          <button type="button" class="rail-tab" id="tabAiBtn" role="tab" aria-selected="false" aria-controls="aiChatPane">
+            <span class="sparkle-icon" aria-hidden="true">&#10024;</span> AI Chat
+          </button>
+          <button type="button" class="rail-tab" id="tabEndnotesBtn" role="tab" aria-selected="false" aria-controls="bookEndnotesPane">
+            Endnotes
+            <span class="rail-tab__count" id="endnotesTabCount">0</span>
+          </button>
+        </div>
+        <button type="button" class="rail-close-btn" id="rightRailClose" aria-label="Close right sidebar">&times;</button>
+      </div>
+
+      <!-- Pane 1: User Highlights & Margin Notes -->
+      <div class="rail-pane" id="userNotesPane" role="tabpanel" aria-labelledby="tabNotesBtn">
+        <div class="notes-toolbar">
+          <button type="button" class="notes-action-btn notes-action-btn--primary" id="addStandaloneNoteBtn">+ Add Note</button>
+          <div class="notes-toolbar__right">
+            <button type="button" class="notes-action-btn" id="askAiWithAllNotesBtn" title="Send all your notes to AI Chat">&#10024; Ask AI</button>
+            <button type="button" class="notes-action-btn" id="exportNotesBtn" title="Download highlights and notes as Markdown" disabled>Export</button>
+            <button type="button" class="notes-action-btn notes-action-btn--danger" id="clearAllNotesBtn" title="Delete all saved highlights and notes" hidden>Clear</button>
+          </div>
+        </div>
+
+        <div class="notes-empty" id="notesEmptyState">
+          <p class="notes-empty__title">No highlights or notes yet</p>
+          <p class="notes-empty__desc">Select any passage in the text to <strong>Highlight</strong>, attach a <strong>+ Note</strong>, or click <strong>&#10024; Ask AI</strong> to analyze it alongside your notes.</p>
+        </div>
+
+        <div class="notes-list" id="notesList" aria-live="polite"></div>
+      </div>
+
+      <!-- Pane 2: Ask AI Chat Panel (Powered by Gemini 4 Neon) -->
+      <div class="rail-pane rail-pane--chat" id="aiChatPane" role="tabpanel" aria-labelledby="tabAiBtn" hidden>
+        <div class="ai-chat-topbar">
+          <label class="ai-model-picker" for="aiModelSelect">
+            <span class="ai-model-picker__dot" aria-hidden="true"></span>
+            <select id="aiModelSelect" class="ai-model-select" aria-label="Select Gemini model">
+              <option value="gemini-4-neon" selected>Gemini 4 Neon</option>
+              <option value="gemini-4-carbon">Gemini 4 Carbon</option>
+              <option value="gemini-4-argon">Gemini 4 Argon</option>
+              <option value="gemini-4-hydrogen">Gemini 4 Hydrogen</option>
+              <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+            </select>
+          </label>
+          <button type="button" class="notes-action-btn notes-action-btn--danger" id="clearChatBtn" title="Clear chat thread" hidden>Clear chat</button>
+        </div>
+
+        <div class="ai-messages" id="aiMessagesList" aria-live="polite">
+          <div class="ai-empty" id="aiEmptyState">
+            <p class="ai-empty__title">&#10024; Highlight text &rarr; Ask Gemini 4 Neon</p>
+            <p class="ai-empty__desc">Select any passage in the chapter and click <strong>Ask AI</strong>, or ask a question below. Your margin notes are sent along automatically.</p>
+          </div>
+        </div>
+
+        <!-- Attached Highlight + Notes Context Staging Area -->
+        <div class="ai-composer">
+          <div class="ai-context-box" id="aiContextBox" hidden>
+            <div class="ai-context-box__head">
+              <span class="ai-context-box__loc" id="aiContextLoc">Highlighted Passage</span>
+              <button type="button" class="ai-context-box__remove" id="aiContextClearBtn" title="Detach passage" aria-label="Detach passage">&times;</button>
+            </div>
+            <blockquote class="ai-context-box__quote" id="aiContextQuote"></blockquote>
+          </div>
+
+          <div class="ai-notes-toggle-row">
+            <label class="ai-notes-check">
+              <input type="checkbox" id="aiIncludeNotesCheck" checked />
+              <span>Send along with my notes (<span id="aiNotesAttachedCount">0</span>)</span>
+            </label>
+          </div>
+
+          <div class="ai-quick-prompts" id="aiQuickPrompts">
+            <button type="button" class="ai-chip" data-prompt="Explain the author’s core argument in this passage and how it connects to my notes.">Explain passage</button>
+            <button type="button" class="ai-chip" data-prompt="Synthesize this passage with my saved notes and highlight key themes or tensions.">Connect to my notes</button>
+            <button type="button" class="ai-chip" data-prompt="What historical or intellectual context and counterarguments apply to this claim?">Context &amp; critique</button>
+          </div>
+
+          <div class="ai-form" id="aiChatForm">
+            <textarea id="aiPromptInput" class="ai-form__input" rows="2" placeholder="Ask Gemini 4 Neon about the highlighted passage &amp; your notes…"></textarea>
+            <button type="button" class="ai-form__send" id="aiSendBtn" title="Send to Gemini 4 Neon (Enter)">Ask AI &uarr;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pane 3: Book Endnotes in Right Sidebar -->
+      <div class="rail-pane" id="bookEndnotesPane" role="tabpanel" aria-labelledby="tabEndnotesBtn" hidden>
+        <p class="rail-endnotes-intro" id="railEndnotesIntro">Click any superscript number in the text to highlight its note here.</p>
+        <ol class="rail-endnotes-list" id="railEndnotesList"></ol>
+      </div>
+
+      <!-- Model & Storage Status Footer -->
+      <div class="rail-sync-footer is-neon" id="syncStatusBar">
+        <span class="rail-sync-footer__dot" id="syncFooterDot"></span>
+        <span class="rail-sync-footer__text" id="syncFooterText">Connected to Gemini 4 Neon</span>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Library & EPUB / PDF Upload Modal -->
+  <div class="modal-overlay" id="libraryModal" role="dialog" aria-modal="true" aria-labelledby="libraryModalTitle" hidden>
+    <div class="studio-modal">
+      <div class="studio-modal__header">
+        <div>
+          <span class="rail-eyebrow">Website Book Storage &amp; Background Gemini Pipeline</span>
+          <h2 class="studio-modal__title" id="libraryModalTitle">Book Library &amp; Upload</h2>
+        </div>
+        <button type="button" class="rail-close-btn studio-modal__close" id="libraryCloseBtn" aria-label="Close library">&times;</button>
+      </div>
+
+      <!-- Drag & Drop Upload Box -->
+      <div class="upload-dropzone" id="uploadDropzone">
+        <input type="file" id="bookFileInput" accept=".epub,.pdf,application/epub+zip,application/pdf" hidden />
+        <div class="upload-dropzone__main">
+          <div class="upload-dropzone__icon" aria-hidden="true">EPUB / PDF</div>
+          <div class="upload-dropzone__copy">
+            <p class="upload-dropzone__headline">Drop an <strong>.epub</strong> or <strong>.pdf</strong> here, or <button type="button" class="upload-browse-link" id="uploadBrowseBtn">choose a file</button></p>
+            <p class="upload-dropzone__sub">Extracts 100% of the actual book prose immediately, then generates section guides, animated SVG diagrams &amp; 16:9 Story Comics in the background.</p>
+          </div>
+        </div>
+
+        <div class="upload-dropzone__options">
+          <label class="upload-mode-label" for="comicModeSelect">Background Visual Depth:</label>
+          <select id="comicModeSelect" class="ai-model-select">
+            <option value="all" selected>Full Illustrated Edition (Story Comics + SVG Diagrams for all sections)</option>
+            <option value="first">Balanced for Long Books (1st Story Comic per chapter + all SVG Diagrams)</option>
+            <option value="diagrams_only">Fast Mode (All SVG Diagrams now · generate Comics on demand)</option>
+          </select>
+        </div>
+
+        <div class="upload-status-bar" id="uploadStatusBar" hidden>
+          <div class="upload-status-bar__row">
+            <span id="uploadStatusText">Uploading…</span>
+            <span id="uploadStatusPct">0%</span>
+          </div>
+          <div class="job-progress-track">
+            <div class="job-progress-fill" id="uploadProgressFill" style="width: 10%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stored Books Grid -->
+      <div class="library-section">
+        <div class="library-section__head">
+          <h3 class="library-section__title">Stored Books in Website (<span id="libraryBookCount">0</span>)</h3>
+          <span class="library-section__hint">Saved on server &amp; synced to browser IndexedDB</span>
+        </div>
+        <div class="library-grid" id="libraryGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Drawer Backdrop -->
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+
+  <!-- Floating Text Selection Highlight, Note & Ask AI Toolbar -->
+  <div class="selection-toolbar" id="selectionToolbar" role="toolbar" aria-label="Highlight, add note, or ask AI about selection" hidden>
+    <button type="button" class="hl-swatch hl-swatch--amber" data-hl-create="amber" title="Highlight Yellow" aria-label="Highlight Yellow"></button>
+    <button type="button" class="hl-swatch hl-swatch--coral" data-hl-create="coral" title="Highlight Coral" aria-label="Highlight Coral"></button>
+    <button type="button" class="hl-swatch hl-swatch--sage" data-hl-create="sage" title="Highlight Sage" aria-label="Highlight Sage"></button>
+    <button type="button" class="hl-swatch hl-swatch--sky" data-hl-create="sky" title="Highlight Blue" aria-label="Highlight Blue"></button>
+    <span class="selection-toolbar__divider" aria-hidden="true"></span>
+    <button type="button" class="selection-toolbar__btn" id="selectionAddNoteBtn">+ Note</button>
+    <button type="button" class="selection-toolbar__ask-btn" id="selectionAskAiBtn">&#10024; Ask AI</button>
+  </div>
+
+  <!-- Floating Inline Footnote Popover -->
+  <aside class="note-popover" id="notePopover" role="dialog" aria-modal="false" aria-labelledby="notePopoverTitle" hidden>
+    <div class="note-popover__header">
+      <span class="note-popover__title" id="notePopoverTitle">Note 1</span>
+      <div class="note-popover__actions">
+        <a href="#note-1" class="note-popover__jump" id="notePopoverJump">All notes &darr;</a>
+        <button type="button" class="note-popover__close" id="notePopoverClose" aria-label="Close note preview">&times;</button>
+      </div>
+    </div>
+    <div class="note-popover__content" id="notePopoverContent"></div>
+  </aside>
+
+  <!-- Colophon / Footer -->
+  <footer class="colophon">
+    <div class="colophon__inner">
+      <div class="colophon__book">
+        <p class="colophon__title" id="colophonTitle"><em>Book Viz Studio</em> &mdash; Interactive Gemini Digital Editions</p>
+        <p class="colophon__pub" id="colophonPub">Upload any EPUB or PDF &middot; Full chapter prose, Story Comics, animated SVG diagrams &amp; Gemini 4 Neon study notes stored in website</p>
+      </div>
+      <a href="#top" class="colophon__top">Back to top &uarr;</a>
+    </div>
+  </footer>
+
+  <script src="app.js?v=1"></script>
+</body>
+</html>

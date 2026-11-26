@@ -1,0 +1,484 @@
+/* ==========================================================================
+   BOOK VIZ STUDIO — Library Drawer, Upload Dropzone & Live Background Status
+   (Extends styles.css while keeping the reader visualization 100% identical)
+   ========================================================================== */
+
+.library-pill-btn {
+  border-color: rgba(201, 37, 24, 0.35);
+  font-weight: 600;
+}
+
+.library-pill-btn:hover {
+  border-color: var(--vermilion);
+  color: var(--accent);
+}
+
+.receipt-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.receipt-cta--alt {
+  background: var(--vermilion);
+  border-color: var(--vermilion);
+  color: #fff;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.receipt-cta--alt:hover {
+  background: var(--vermilion-deep);
+  border-color: var(--vermilion-deep);
+  color: #fff;
+}
+
+/* Live Background Job Pill in Top Bar */
+.job-live-pill {
+  border-color: rgba(225, 43, 29, 0.45);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  max-width: 16rem;
+}
+
+.job-live-pill[hidden] {
+  display: none !important;
+}
+
+.job-live-pill__spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(201, 37, 24, 0.28);
+  border-top-color: var(--vermilion);
+  animation: studioSpin 0.85s linear infinite;
+  flex-shrink: 0;
+}
+
+.job-live-pill__text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes studioSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Empty Stage Card */
+.empty-stage-card {
+  max-width: var(--measure);
+  margin: 1.5rem auto 2.5rem;
+  padding: 2.2rem 2rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--vermilion);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-sans);
+  text-align: center;
+}
+
+.empty-stage-card[hidden] {
+  display: none !important;
+}
+
+.empty-stage-card__eyebrow {
+  margin: 0 0 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.empty-stage-card__title {
+  margin: 0 0 0.75rem;
+  font-family: var(--font-serif);
+  font-size: 1.85rem;
+  line-height: 1.2;
+}
+
+.empty-stage-card__desc {
+  margin: 0 auto 1.35rem;
+  max-width: 32rem;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--ink-secondary);
+}
+
+.studio-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.62rem 1.2rem;
+  border: none;
+  border-radius: 7px;
+  background: var(--vermilion);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.studio-primary-btn:hover:not(:disabled) {
+  background: var(--vermilion-deep);
+}
+
+.studio-primary-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Library & Upload Modal */
+.studio-modal {
+  width: min(54rem, 100%);
+  max-height: min(88vh, 52rem);
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  background: var(--bg-elevated);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--vermilion);
+  border-radius: 12px;
+  padding: 1.25rem 1.4rem;
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-sans);
+  overflow-y: auto;
+}
+
+.studio-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.studio-modal__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.45rem;
+  font-weight: 700;
+}
+
+.studio-modal__close {
+  display: inline-block !important;
+  font-size: 1.6rem;
+}
+
+/* Upload Dropzone */
+.upload-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 1.1rem 1.2rem;
+  background: color-mix(in srgb, var(--bg) 72%, var(--bg-elevated));
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.upload-dropzone.is-dragover {
+  border-color: var(--vermilion);
+  background: var(--accent-soft);
+}
+
+.upload-dropzone__main {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.upload-dropzone__icon {
+  padding: 0.65rem 0.8rem;
+  border-radius: 7px;
+  background: var(--receipt-paper);
+  color: var(--receipt-ink);
+  border: 1.5px dashed rgba(39, 50, 140, 0.36);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+
+.upload-dropzone__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.upload-dropzone__headline {
+  margin: 0 0 0.22rem;
+  font-size: 0.94rem;
+  color: var(--ink);
+}
+
+.upload-browse-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.upload-dropzone__sub {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--ink-secondary);
+}
+
+.upload-dropzone__options {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+}
+
+.upload-mode-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.upload-status-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 7px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+}
+
+.upload-status-bar[hidden] {
+  display: none !important;
+}
+
+.upload-status-bar__row {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink);
+}
+
+.job-progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.job-progress-fill {
+  height: 100%;
+  background: var(--vermilion);
+  border-radius: 999px;
+  transition: width 0.32s ease;
+}
+
+.job-progress-fill.is-done {
+  background: var(--neon-green-deep);
+}
+
+/* Stored Bookshelf Grid */
+.library-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.library-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.library-section__title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.library-section__hint {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--ink-muted);
+}
+
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.library-empty {
+  grid-column: 1 / -1;
+  padding: 1.4rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+
+.book-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--vermilion);
+  border-radius: 9px;
+  background: var(--bg);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.book-card.is-current {
+  box-shadow: 0 0 0 2px var(--vermilion), var(--shadow-sm);
+  background: var(--bg-elevated);
+}
+
+.book-card__top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.book-card__badges {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.book-card__format {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 800;
+  padding: 0.1rem 0.38rem;
+  border-radius: 4px;
+  background: var(--receipt-paper);
+  color: var(--receipt-ink);
+  border: 1px solid rgba(39, 50, 140, 0.25);
+  text-transform: uppercase;
+}
+
+.book-card__meta {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--ink-muted);
+}
+
+.book-card__title {
+  margin: 0.15rem 0 0;
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.book-card__author {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--ink-secondary);
+}
+
+.book-card__job {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  padding: 0.42rem 0.52rem;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  font-size: 0.7rem;
+  color: var(--ink-secondary);
+}
+
+.book-card__job-phase {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.book-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+/* Pending Story Comic Placeholder Inside Section Visual */
+.comic-placeholder {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, #f7f1e3 0%, #ede4cf 100%);
+  color: #2a2118;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+html[data-theme="night"] .comic-placeholder {
+  background: linear-gradient(135deg, #21201d 0%, #191816 100%);
+  color: var(--ink);
+}
+
+.comic-placeholder__spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(225, 43, 29, 0.25);
+  border-top-color: var(--vermilion);
+  animation: studioSpin 0.9s linear infinite;
+}
+
+.comic-placeholder__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.comic-placeholder__desc {
+  margin: 0;
+  max-width: 26rem;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  color: var(--ink-secondary);
+}
+
+@media (max-width: 44rem) {
+  .upload-dropzone__main {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

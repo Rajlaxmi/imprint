@@ -1,0 +1,14 @@
+# Secrets & Environment
+.env
+.env.*
+!.env.example
+
+# Dependencies & OS
+node_modules/
+.DS_Store
+__pycache__/
+*.pyc
+
+# Runtime uploaded books & generated assets (persisted locally on server)
+data/*
+!data/.gitkeep
