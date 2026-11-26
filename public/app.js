@@ -154,6 +154,8 @@
   const receiptItem = document.getElementById("receiptItem");
   const receiptFolio = document.getElementById("receiptFolio");
   const receiptNotes = document.getElementById("receiptNotes");
+  const receiptSourceRow = document.getElementById("receiptSourceRow");
+  const receiptSourceLink = document.getElementById("receiptSourceLink");
   const receiptBalanceDue = document.getElementById("receiptBalanceDue");
   const receiptTagline = document.getElementById("receiptTagline");
   const colophonTitle = document.getElementById("colophonTitle");
@@ -1022,6 +1024,18 @@
     receiptAuthor.textContent = (book.author || "").toUpperCase();
     receiptBalanceDue.textContent = (book.balanceDue || "OPEN EDITION").toUpperCase();
     if (book.tagline) receiptTagline.textContent = book.tagline;
+    if (receiptSourceRow && receiptSourceLink) {
+      if (book.sourceUrl) {
+        receiptSourceRow.hidden = false;
+        receiptSourceLink.href = book.sourceUrl;
+        let shortHost = book.sourceUrl.replace(/^https?:\/\/(www\.)?/i, "");
+        if (shortHost.length > 26) shortHost = shortHost.slice(0, 25) + "…";
+        receiptSourceLink.textContent = `${shortHost.toUpperCase()} ↗`;
+        receiptSourceLink.title = book.sourceUrl;
+      } else {
+        receiptSourceRow.hidden = true;
+      }
+    }
 
     requestAnimationFrame(fitReceiptTitle);
 
@@ -1355,6 +1369,16 @@
               <span class="folio-marker" data-page="${ch.folioStart}" title="Page ${ch.folioStart}">p. ${ch.folioStart}</span>
               <p class="chapter-number">${escapeHTML(ch.chapterLabel)}</p>
               <h1 class="chapter-title">${escapeHTML(ch.title)}</h1>
+              ${
+                book.sourceUrl
+                  ? `<div class="chapter-source-ref">
+                      <span class="chapter-source-ref__label">Source</span>
+                      <a href="${escapeHTML(book.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="chapter-source-ref__link" title="${escapeHTML(
+                      book.sourceUrl
+                    )}">${escapeHTML(book.sourceUrl)} &nearr;</a>
+                    </div>`
+                  : ""
+              }
             </header>
             ${sectionsHtml}
             ${pagerHtml}
@@ -1894,7 +1918,7 @@
     const parent = node.parentElement;
     if (!parent) return true;
     return Boolean(
-      parent.closest(".folio-marker, .note-ref, .endnotes__back, .section-visual, .book-figure, .stage-ch-bar, .chapter-pager, script, style")
+      parent.closest(".folio-marker, .note-ref, .chapter-source-ref, .endnotes__back, .section-visual, .book-figure, .stage-ch-bar, .chapter-pager, script, style")
     );
   }
 

@@ -162,6 +162,7 @@ function upsertLibraryEntry(book) {
     pubDate: book.pubDate || "",
     tagline: book.tagline || "",
     sourceFormat: book.sourceFormat || "epub",
+    sourceUrl: book.sourceUrl || "",
     originalFilename: book.originalFilename || "",
     chapterCount: Array.isArray(book.chapters) ? book.chapters.length : 0,
     wordCount: book.wordCount || 0,

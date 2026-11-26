@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Book Viz Studio | Library Index</title>
   <meta name="description" content="Upload any EPUB, PDF, or web link and let Gemini process it in the background into an interactive editorial edition with full prose, 16:9 Story Comics, animated SVG diagrams, margin notes, and Gemini 4 Neon AI study chat." />
-  <link rel="stylesheet" href="styles.css?v=8" />
-  <link rel="stylesheet" href="studio.css?v=8" />
+  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="studio.css?v=9" />
 </head>
 <body>
   <a class="skip-link" href="#chapter-text">Skip to chapter text</a>
@@ -209,6 +209,10 @@
             <div class="receipt-ledger__row">
               <dt>ENDNOTES</dt>
               <dd id="receiptNotes">&mdash;</dd>
+            </div>
+            <div class="receipt-ledger__row" id="receiptSourceRow" hidden>
+              <dt>SOURCE</dt>
+              <dd><a href="#" target="_blank" rel="noopener noreferrer" class="receipt-source-link" id="receiptSourceLink">LINK &nearr;</a></dd>
             </div>
             <div class="receipt-ledger__row receipt-ledger__row--total">
               <dt>BALANCE DUE</dt>
@@ -495,6 +499,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>
