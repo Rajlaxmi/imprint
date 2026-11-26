@@ -21,7 +21,7 @@
   const GH_REPO_STORAGE = "imprint_browser_gh_repo_v1";
   const GH_AUTOSYNC_STORAGE = "imprint_browser_gh_autosync_v1";
   const DELETED_SEEDS_STORAGE = "imprint_deleted_seed_books_v1";
-  const STATE_MIRROR_PREFIX = "imprint_state_mirror_v1_";
+  const STATE_MIRROR_PREFIX = "imprint_state_mirror_v2_";
   const MODEL_STORAGE = "imprint_browser_model_v1";
   const STATIC_DB_NAME = "ImprintStaticServerDB";
   const STATIC_DB_VER = 1;
@@ -149,26 +149,28 @@
     });
   }
 
-  function mergeChatLists(a, b, clearedAfter = 0) {
+  function mergeChatLists(a, b, clearedAfter = 0, bookId = "") {
     const byId = new Map();
     for (const list of [a, b]) {
       if (!Array.isArray(list)) continue;
       for (const m of list) {
         if (!m || !m.id) continue;
+        if (bookId && m.bookId && m.bookId !== bookId) continue;
         if (clearedAfter && (m.createdAt || 0) <= clearedAfter) continue;
-        byId.set(m.id, m);
+        byId.set(m.id, bookId ? { ...m, bookId } : m);
       }
     }
     return Array.from(byId.values()).sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
   }
 
-  function mergeAnnotationLists(a, b) {
+  function mergeAnnotationLists(a, b, bookId = "") {
     const byId = new Map();
     for (const list of [a, b]) {
       if (!Array.isArray(list)) continue;
       for (const item of list) {
         if (!item || !item.id) continue;
-        byId.set(item.id, item);
+        if (bookId && item.bookId && item.bookId !== bookId) continue;
+        byId.set(item.id, bookId ? { ...item, bookId } : item);
       }
     }
     return Array.from(byId.values());
@@ -182,11 +184,11 @@
     for (const slug of slugs) {
       let clearedAt = 0;
       try {
-        clearedAt = Number(localStorage.getItem(`bvs_${bookId}_${slug}_chat_cleared_at`) || 0);
+        clearedAt = Number(localStorage.getItem(`bvs_v2_${bookId}_${slug}_chat_cleared_at`) || 0);
       } catch (_) {}
       out.chapters[slug] = {
-        annotations: mergeAnnotationLists(chA[slug]?.annotations, chB[slug]?.annotations),
-        chatMessages: mergeChatLists(chA[slug]?.chatMessages, chB[slug]?.chatMessages, clearedAt),
+        annotations: mergeAnnotationLists(chA[slug]?.annotations, chB[slug]?.annotations, bookId),
+        chatMessages: mergeChatLists(chA[slug]?.chatMessages, chB[slug]?.chatMessages, clearedAt, bookId),
       };
     }
     return out;
@@ -206,10 +208,10 @@
       localStorage.setItem(STATE_MIRROR_PREFIX + bookId, JSON.stringify({ ...stateObj, id: bookId }));
       for (const [slug, chData] of Object.entries(stateObj?.chapters || {})) {
         if (Array.isArray(chData.chatMessages)) {
-          localStorage.setItem(`bvs_${bookId}_${slug}_chat`, JSON.stringify(chData.chatMessages));
+          localStorage.setItem(`bvs_v2_${bookId}_${slug}_chat`, JSON.stringify(chData.chatMessages));
         }
         if (Array.isArray(chData.annotations)) {
-          localStorage.setItem(`bvs_${bookId}_${slug}_annotations`, JSON.stringify(chData.annotations));
+          localStorage.setItem(`bvs_v2_${bookId}_${slug}_annotations`, JSON.stringify(chData.annotations));
         }
       }
     } catch (_) {}

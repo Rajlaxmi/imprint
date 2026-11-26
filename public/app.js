@@ -44,7 +44,7 @@
     return new Promise((resolve) => {
       const tx = db.transaction(IDB_STATE_STORE, "readwrite");
       tx.objectStore(IDB_STATE_STORE).put({
-        id: `${bookId}::${ch}`,
+        id: `v2::${bookId}::${ch}`,
         bookId,
         chapter: ch,
         annotations: data.annotations || [],
@@ -62,7 +62,7 @@
     if (!db || !db.objectStoreNames.contains(IDB_STATE_STORE)) return null;
     return new Promise((resolve) => {
       const tx = db.transaction(IDB_STATE_STORE, "readonly");
-      const req = tx.objectStore(IDB_STATE_STORE).get(`${bookId}::${ch}`);
+      const req = tx.objectStore(IDB_STATE_STORE).get(`v2::${bookId}::${ch}`);
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => resolve(null);
     });
@@ -135,27 +135,28 @@
     return `bvs_${bookId}_active_ch`;
   }
   function annStorageKey(bookId, ch) {
-    return `bvs_${bookId}_${ch}_annotations`;
+    return `bvs_v2_${bookId}_${ch}_annotations`;
   }
   function annDeletedKey(bookId, ch) {
-    return `bvs_${bookId}_${ch}_ann_deleted`;
+    return `bvs_v2_${bookId}_${ch}_ann_deleted`;
   }
   function annClearedKey(bookId, ch) {
-    return `bvs_${bookId}_${ch}_ann_cleared_at`;
+    return `bvs_v2_${bookId}_${ch}_ann_cleared_at`;
   }
   function chatStorageKey(bookId, ch) {
-    return `bvs_${bookId}_${ch}_chat`;
+    return `bvs_v2_${bookId}_${ch}_chat`;
   }
   function chatClearedKey(bookId, ch) {
-    return `bvs_${bookId}_${ch}_chat_cleared_at`;
+    return `bvs_v2_${bookId}_${ch}_chat_cleared_at`;
   }
 
-  function mergeAnnotationListsClient(lists, deletedSet = new Set(), clearedAfter = 0) {
+  function mergeAnnotationListsClient(lists, deletedSet = new Set(), clearedAfter = 0, targetBookId = "") {
     const byId = new Map();
     for (const arr of lists) {
       if (!Array.isArray(arr)) continue;
       for (const a of arr) {
         if (!a || !a.id) continue;
+        if (targetBookId && a.bookId && a.bookId !== targetBookId) continue;
         if (deletedSet.has(a.id)) continue;
         if (clearedAfter && (a.createdAt || 0) <= clearedAfter) continue;
         const prev = byId.get(a.id);
@@ -164,6 +165,7 @@
           byId.set(a.id, {
             ...prev,
             ...a,
+            bookId: targetBookId || a.bookId || prev?.bookId || "",
             start: typeof a.start === "number" ? a.start : prev?.start ?? null,
             end: typeof a.end === "number" ? a.end : prev?.end ?? null,
           });
@@ -173,14 +175,15 @@
     return Array.from(byId.values()).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   }
 
-  function mergeChatMessageLists(lists, clearedAfter = 0) {
+  function mergeChatMessageLists(lists, clearedAfter = 0, targetBookId = "") {
     const byId = new Map();
     for (const arr of lists) {
       if (!Array.isArray(arr)) continue;
       for (const m of arr) {
         if (!m || !m.id) continue;
+        if (targetBookId && m.bookId && m.bookId !== targetBookId) continue;
         if (clearedAfter && (m.createdAt || 0) <= clearedAfter) continue;
-        byId.set(m.id, m);
+        byId.set(m.id, targetBookId && !m.bookId ? { ...m, bookId: targetBookId } : m);
       }
     }
     return Array.from(byId.values()).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -1463,6 +1466,20 @@
 
   function renderBookDOM(book) {
     destroyVisualControllers();
+    const isSameBook = Boolean(currentBook && currentBook.id === book.id);
+    if (!isSameBook) {
+      clearTimeout(syncTimer);
+      editingEndnoteNums.clear();
+      expandedEndnoteNums.clear();
+      editingNoteIds.clear();
+      expandedNoteIds.clear();
+      selectedAnnotationId = null;
+      stagedAiHighlight = null;
+      chapterData = {};
+      annotations = [];
+      chatMessages = [];
+      if (aiContextBox) aiContextBox.hidden = true;
+    }
     currentBook = book;
     saveJSON(ACTIVE_BOOK_KEY, book.id);
     idbSaveBook(book);
@@ -1480,6 +1497,11 @@
       stageChapterBar.hidden = true;
       chaptersContainer.innerHTML = "";
       leftTocNav.innerHTML = "";
+      railEndnotesList.innerHTML = "";
+      endnotesTabCount.textContent = "0";
+      railEndnotesIntro.textContent = "No endnotes yet in this edition.";
+      renderNotesList();
+      renderChatMessages();
       return;
     }
 
@@ -1738,7 +1760,7 @@
     CHAPTER_META = {};
     CHAPTER_ORDER = allChapterArticles.map((a) => a.dataset.chapter);
 
-    const prevChapterData = currentBook && currentBook.id === book.id ? chapterData : {};
+    const prevChapterData = isSameBook ? chapterData : {};
     chapterData = {};
     allChapterArticles.forEach((art, idx) => {
       const slug = art.dataset.chapter;
@@ -2264,25 +2286,29 @@
       }
     } catch (_) {}
 
+    // Guard against stale async fetch if user switched books while request was in flight
+    if (!currentBook || currentBook.id !== bookId) return;
+
     for (const ch of Object.keys(CHAPTER_META)) {
       const rc = remoteChapters[ch] || {};
       const idbState = await idbGetChapterState(bookId, ch);
+      if (!currentBook || currentBook.id !== bookId) return;
       const localAnns = chapterData[ch]?.annotations || loadJSON(annStorageKey(bookId, ch), []);
       const localChat = chapterData[ch]?.chatMessages || loadJSON(chatStorageKey(bookId, ch), []);
       const clearedAt = Number(loadJSON(chatClearedKey(bookId, ch), 0)) || 0;
       const annClearedAt = Number(loadJSON(annClearedKey(bookId, ch), 0)) || 0;
       const deletedAnnIds = new Set(loadJSON(annDeletedKey(bookId, ch), []));
 
-      // Annotations (Highlights & Notes): union-merge Server + IndexedDB + localStorage by ID!
+      // Annotations (Highlights & Notes): strictly scoped to bookId!
       const rAnns = Array.isArray(rc.annotations) ? rc.annotations : [];
       const iAnns = Array.isArray(idbState?.annotations) ? idbState.annotations : [];
-      const mergedAnns = mergeAnnotationListsClient([rAnns, iAnns, localAnns], deletedAnnIds, annClearedAt);
+      const mergedAnns = mergeAnnotationListsClient([rAnns, iAnns, localAnns], deletedAnnIds, annClearedAt, bookId);
       chapterData[ch].annotations = mergedAnns;
 
-      // Chat Messages: union-merge Server + IndexedDB + localStorage by message ID!
+      // Chat Messages: strictly scoped to bookId!
       const rChat = Array.isArray(rc.chatMessages) ? rc.chatMessages : [];
       const iChat = Array.isArray(idbState?.chatMessages) ? idbState.chatMessages : [];
-      const mergedChat = mergeChatMessageLists([rChat, iChat, localChat], clearedAt);
+      const mergedChat = mergeChatMessageLists([rChat, iChat, localChat], clearedAt, bookId);
       chapterData[ch].chatMessages = mergedChat;
 
       saveJSON(annStorageKey(bookId, ch), mergedAnns);
@@ -2805,6 +2831,7 @@
     const id = "hl_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6);
     const entry = {
       id,
+      bookId: currentBook.id,
       start,
       end,
       quote: quote || "",
@@ -3153,14 +3180,28 @@
       pendingBubble.remove();
       if (!res.ok) throw new Error(data.error || "Gemini request failed.");
 
-      chapterData[ch].chatMessages = mergeChatMessageLists([
-        chapterData[ch].chatMessages,
-        [data.userMessage, data.assistantMessage],
-      ]);
-      persistChatLocally(bookId, ch, chapterData[ch].chatMessages);
-      if (currentBook.id === bookId && activeChapter === ch) {
-        chatMessages = chapterData[ch].chatMessages;
-        renderChatMessages();
+      const updatedList = mergeChatMessageLists(
+        [
+          currentBook && currentBook.id === bookId ? chapterData[ch]?.chatMessages : loadJSON(chatStorageKey(bookId, ch), []),
+          [data.userMessage, data.assistantMessage],
+        ],
+        0,
+        bookId
+      );
+      saveJSON(chatStorageKey(bookId, ch), updatedList);
+      idbSaveChapterState(bookId, ch, {
+        annotations:
+          currentBook && currentBook.id === bookId
+            ? chapterData[ch]?.annotations || []
+            : loadJSON(annStorageKey(bookId, ch), []),
+        chatMessages: updatedList,
+      });
+      if (currentBook && currentBook.id === bookId) {
+        if (chapterData[ch]) chapterData[ch].chatMessages = updatedList;
+        if (activeChapter === ch) {
+          chatMessages = updatedList;
+          renderChatMessages();
+        }
       }
     } catch (err) {
       pendingBubble.innerHTML = `<div class="ai-msg__body"><p><strong>Error:</strong> ${escapeHTML(err.message)}</p></div>`;

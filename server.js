@@ -2060,16 +2060,18 @@ const server = http.createServer(async (req, res) => {
       if (subroute === "annotations/sync" && req.method === "POST") {
         const body = await readJsonBody(req);
         const ch = normalizeChapterSlug(body.chapter);
-        const list = Array.isArray(body.annotations) ? body.annotations : [];
+        const list = (Array.isArray(body.annotations) ? body.annotations : [])
+          .filter((a) => a && a.id && (!a.bookId || a.bookId === bookId))
+          .map((a) => ({ ...a, bookId }));
         const state = readBookState(bookId);
         if (!state.chapters[ch]) state.chapters[ch] = { annotations: [], chatMessages: [] };
         if (body.mode === "merge") {
           const byId = new Map();
           for (const a of state.chapters[ch].annotations || []) {
-            if (a && a.id) byId.set(a.id, a);
+            if (a && a.id && (!a.bookId || a.bookId === bookId)) byId.set(a.id, { ...a, bookId });
           }
           for (const a of list) {
-            if (a && a.id) byId.set(a.id, { ...(byId.get(a.id) || {}), ...a });
+            byId.set(a.id, { ...(byId.get(a.id) || {}), ...a, bookId });
           }
           state.chapters[ch].annotations = Array.from(byId.values()).sort(
             (x, y) => (x.createdAt || 0) - (y.createdAt || 0)
@@ -2081,20 +2083,22 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, 200, { ok: true, chapter: ch, count: state.chapters[ch].annotations.length });
       }
 
-      // POST /api/books/:id/chat/sync -> Persist merged client/offline chat history on server
+      // POST /api/books/:id/chat/sync -> Persist merged client/offline chat history strictly scoped to bookId
       if (subroute === "chat/sync" && req.method === "POST") {
         const body = await readJsonBody(req);
         const ch = normalizeChapterSlug(body.chapter);
-        const incoming = Array.isArray(body.chatMessages) ? body.chatMessages : [];
+        const incoming = (Array.isArray(body.chatMessages) ? body.chatMessages : []).filter(
+          (m) => m && m.id && (!m.bookId || m.bookId === bookId)
+        );
         const state = readBookState(bookId);
         if (!state.chapters[ch]) state.chapters[ch] = { annotations: [], chatMessages: [] };
 
         const byId = new Map();
         for (const m of state.chapters[ch].chatMessages || []) {
-          if (m && m.id) byId.set(m.id, m);
+          if (m && m.id && (!m.bookId || m.bookId === bookId)) byId.set(m.id, { ...m, bookId });
         }
         for (const m of incoming) {
-          if (m && m.id) byId.set(m.id, m);
+          byId.set(m.id, { ...m, bookId });
         }
         const merged = Array.from(byId.values()).sort(
           (a, b) => (a.createdAt || 0) - (b.createdAt || 0)
@@ -2249,6 +2253,7 @@ const server = http.createServer(async (req, res) => {
           highlightQuote: (selectedHighlight && selectedHighlight.quote) || "",
           highlightLoc: (selectedHighlight && selectedHighlight.locLabel) || "",
           notesCount: notes.length,
+          bookId,
           createdAt: now,
         };
 
@@ -2264,6 +2269,7 @@ const server = http.createServer(async (req, res) => {
 
         const assistantMsg = {
           id: `msg_a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          bookId,
           role: "assistant",
           content: answer,
           highlightQuote: "",

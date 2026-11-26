@@ -14,7 +14,8 @@
           "modelLabel": "Gemini 4 Neon",
           "promptQuestion": "who is this?",
           "linkedHighlightId": null,
-          "createdAt": 1795673283914
+          "createdAt": 1795673283914,
+          "bookId": "book_mwx3vid0_0fi5"
         }
       ],
       "chatMessages": [
@@ -25,7 +26,8 @@
           "highlightQuote": "VP ≠ VNP",
           "highlightLoc": "I · p. 1",
           "notesCount": 0,
-          "createdAt": 1795671498901
+          "createdAt": 1795671498901,
+          "bookId": "book_mwx3vid0_0fi5"
         },
         {
           "id": "msg_a_1795671535148_sfdr",
@@ -67,7 +69,8 @@
             "site:github.com/openai/math \"Valiant\" OR \"permanent\" OR \"VP-and-VNP\"",
             "site:github.com/openai/math \"Paths-trees-and-grids-separate-Valiants-hierarchy\" OR \"Paths, trees and grids separate Valiant\""
           ],
-          "createdAt": 1795671535148
+          "createdAt": 1795671535148,
+          "bookId": "book_mwx3vid0_0fi5"
         },
         {
           "id": "msg_u_1795672086266_myda",
@@ -76,7 +79,8 @@
           "highlightQuote": "we saw that OpenAI claims to prove that ω, the exponent of matrix multiplication, is exactly 9/4—a lower bound (!!), matching the upper bound that OpenAI proved in the great Mathocalypse drop of October 6.",
           "highlightLoc": "I · p. 1",
           "notesCount": 1,
-          "createdAt": 1795672086266
+          "createdAt": 1795672086266,
+          "bookId": "book_mwx3vid0_0fi5"
         },
         {
           "id": "msg_a_1795672120845_hh84",
@@ -116,7 +120,8 @@
             "\"The-matrix-multiplication-exponent-is-nine-fourths\" openai",
             "\"matrix multiplication\" practical implementation complexity strassen cublas galactic algorithm"
           ],
-          "createdAt": 1795672120845
+          "createdAt": 1795672120845,
+          "bookId": "book_mwx3vid0_0fi5"
         },
         {
           "id": "msg_u_1795673079400_1u7g",
@@ -125,7 +130,8 @@
           "highlightQuote": "van Leeuwenhoek",
           "highlightLoc": "I · p. 2",
           "notesCount": 1,
-          "createdAt": 1795673079400
+          "createdAt": 1795673079400,
+          "bookId": "book_mwx3vid0_0fi5"
         },
         {
           "id": "msg_a_1795673093886_laao",
@@ -136,7 +142,8 @@
           "notesCount": 0,
           "sources": [],
           "searchQueries": [],
-          "createdAt": 1795673093886
+          "createdAt": 1795673093886,
+          "bookId": "book_mwx3vid0_0fi5"
         },
         {
           "id": "msg_u_1795673330636_ybp5",
@@ -145,7 +152,8 @@
           "highlightQuote": "",
           "highlightLoc": "",
           "notesCount": 1,
-          "createdAt": 1795673330636
+          "createdAt": 1795673330636,
+          "bookId": "book_mwx3vid0_0fi5"
         },
         {
           "id": "msg_a_1795673381688_deth",
@@ -187,7 +195,8 @@
             "\"Lens on Leeuwenhoek\" letters",
             "van Leeuwenhoek quotes curiosity Royal Society letters"
           ],
-          "createdAt": 1795673381688
+          "createdAt": 1795673381688,
+          "bookId": "book_mwx3vid0_0fi5"
         }
       ]
     }
