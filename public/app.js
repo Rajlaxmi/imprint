@@ -278,12 +278,45 @@
   }
 
   function formatInlineMarkdown(escapedLine) {
-    return escapedLine
+    // Extract [label](https://...) links first using placeholders so bare-URL pass won't double-wrap
+    const linkTokens = [];
+    let withTokens = escapedLine.replace(
+      /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      (_, label, url) => {
+        const idx = linkTokens.length;
+        linkTokens.push(
+          `<a href="${url}" target="_blank" rel="noopener noreferrer" class="md-link">${label}</a>`
+        );
+        return `@@MDLINK_${idx}@@`;
+      }
+    );
+
+    // Auto-link bare https://... URLs (stripping trailing punctuation cleanly)
+    withTokens = withTokens.replace(
+      /(^|[\s(>])(https?:\/\/[^\s<)"']+)/g,
+      (full, prefix, rawUrl) => {
+        const trailMatch = rawUrl.match(/([.,;:!?)]+)$/);
+        const cleanUrl = trailMatch ? rawUrl.slice(0, -trailMatch[1].length) : rawUrl;
+        const trailing = trailMatch ? trailMatch[1] : "";
+        const idx = linkTokens.length;
+        linkTokens.push(
+          `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="md-link">${cleanUrl}</a>`
+        );
+        return `${prefix}@@MDLINK_${idx}@@${trailing}`;
+      }
+    );
+
+    let formatted = withTokens
       .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/__(.+?)__/g, "<strong>$1</strong>")
       .replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, "$1<em>$2</em>")
       .replace(/(^|[^_])_([^_]+)_(?!_)/g, "$1<em>$2</em>");
+
+    linkTokens.forEach((anchorHtml, idx) => {
+      formatted = formatted.replace(`@@MDLINK_${idx}@@`, anchorHtml);
+    });
+    return formatted;
   }
 
   function formatAiTextToHTML(raw) {
@@ -2304,10 +2337,28 @@
         div.innerHTML = `${ctxHTML}<div class="ai-msg__body md-prose">${formatAiTextToHTML(msg.content)}</div>${notesMeta}`;
       } else {
         const prevUser = idx > 0 && chatMessages[idx - 1]?.role === "user" ? chatMessages[idx - 1] : null;
+        const sources = Array.isArray(msg.sources) ? msg.sources : [];
+        const searchedWeb = sources.length > 0 || (Array.isArray(msg.searchQueries) && msg.searchQueries.length > 0);
+        const sourcesHTML =
+          sources.length > 0
+            ? `<div class="ai-msg__sources">
+                <span class="ai-msg__sources-label">&#128269; Web Sources:</span>
+                ${sources
+                  .map(
+                    (s) =>
+                      `<a href="${escapeHTML(s.uri)}" target="_blank" rel="noopener noreferrer" class="ai-source-pill">${escapeHTML(
+                        s.title || "Source"
+                      )} &nearr;</a>`
+                  )
+                  .join("")}
+              </div>`
+            : "";
+
         div.innerHTML = `
           <div class="ai-msg__body md-prose">${formatAiTextToHTML(msg.content)}</div>
+          ${sourcesHTML}
           <div class="ai-msg__meta">
-            <span>${escapeHTML(msg.highlightLoc || activeModelLabel)}</span>
+            <span>${escapeHTML(msg.highlightLoc || activeModelLabel)}${searchedWeb ? " · Google Search" : ""}</span>
             <button type="button" class="ai-msg__save-btn" data-save-insight>&#128204; Pin to Notes</button>
           </div>
         `;

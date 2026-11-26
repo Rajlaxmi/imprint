@@ -222,6 +222,10 @@ class EpubXHTMLConverter(HTMLParser):
             if is_noteref and href:
                 self._inline_stack.append(("noteref", href))
                 self._push_buf(f"[[NOTEREF:{href}::")
+            elif href.startswith(("http://", "https://")):
+                safe_href = html.escape(href, quote=True)
+                self._inline_stack.append(("extlink", safe_href))
+                self._push_buf(f'<a href="{safe_href}" target="_blank" rel="noopener noreferrer" class="prose-link">')
             else:
                 self._inline_stack.append(("a", ""))
 
@@ -269,6 +273,8 @@ class EpubXHTMLConverter(HTMLParser):
                 kind, _ = self._inline_stack.pop()
                 if kind == "noteref":
                     self._push_buf("]]")
+                elif kind == "extlink":
+                    self._push_buf("</a>")
 
     def handle_data(self, data):
         if self._skip_depth > 0 or not data:

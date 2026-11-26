@@ -216,6 +216,16 @@ function stripTags(htmlStr) {
     .trim();
 }
 
+function stripTagsKeepUrls(htmlStr) {
+  return String(htmlStr || "")
+    .replace(/<span class="folio-marker"[^>]*>.*?<\/span>/gi, " ")
+    .replace(/<sup class="note-ref">.*?<\/sup>/gi, " ")
+    .replace(/<a\b[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>(.*?)<\/a>/gi, "$2 ($1)")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -927,12 +937,12 @@ async function generateBookStudyAnswer({
   const chTitle = ch ? `${ch.chapterLabel} ("${ch.title}", pp. ${ch.folioStart}–${ch.folioEnd})` : chapterSlug;
   const chThemes = ch?.aiThemes || "";
 
-  // Include relevant excerpt from the chapter prose so Gemini 4 Neon has direct textual grounding
+  // Include relevant excerpt from the chapter prose (preserving inline https:// URLs) so Gemini 4 Neon has direct textual & link grounding
   const proseSample = (ch?.paragraphs || [])
-    .slice(0, 28)
-    .map((p) => stripTags(p.html))
+    .slice(0, 32)
+    .map((p) => stripTagsKeepUrls(p.html))
     .join("\n")
-    .slice(0, 5500);
+    .slice(0, 6500);
 
   const notesBlock =
     Array.isArray(notes) && notes.length > 0
@@ -956,15 +966,16 @@ async function generateBookStudyAnswer({
       : `No single active passage selected (general question on ${chTitle}).`;
 
   const systemText = [
-    `You are an insightful scholarly reading companion for ${chTitle} of "${book.title}${book.subtitle ? ": " + book.subtitle : ""}" by ${book.author}.`,
+    `You are an insightful scholarly reading companion for ${chTitle} of "${book.title}${book.subtitle ? ": " + book.subtitle : ""}" by ${book.author}${book.sourceUrl ? ` (Source URL: ${book.sourceUrl})` : ""}.`,
     chThemes ? `Key chapter themes: ${chThemes}` : "",
-    `Engage directly with BOTH the active highlighted passage AND the reader's own margin notes below. Be clear, rigorous, and concise (2–4 short paragraphs or crisp bullet points as appropriate), citing specific ideas and examples from the chapter.`,
+    `You have live Google Search grounding enabled. Whenever the reader asks to find links, papers, proofs, repositories, citations, recent news, or external context beyond the chapter text, actively use Google Search to look them up and include direct clickable Markdown links ([Title](https://...)).`,
+    `Engage directly with BOTH the active highlighted passage AND the reader's own margin notes below. Be clear, rigorous, and concise (2–4 short paragraphs or crisp bullet points as appropriate).`,
     `---`,
     activeHighlightBlock,
     `---`,
     `READER'S SAVED NOTES & HIGHLIGHTS IN THIS CHAPTER:\n${notesBlock}`,
     `---`,
-    `CHAPTER TEXT REFERENCE EXCERPT:\n${proseSample}`,
+    `CHAPTER TEXT REFERENCE EXCERPT (WITH INLINE LINKS):\n${proseSample}`,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -979,11 +990,27 @@ async function generateBookStudyAnswer({
   }
   contents.push({ role: "user", parts: [{ text: question }] });
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      model
-    )}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model
+  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+  // Call with Google Search grounding enabled; fall back cleanly if a model ever rejects tools
+  let res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemText }] },
+      contents,
+      tools: [{ googleSearch: {} }],
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 4096,
+      },
+    }),
+  });
+
+  if (!res.ok && res.status === 400) {
+    res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -994,15 +1021,16 @@ async function generateBookStudyAnswer({
           maxOutputTokens: 4096,
         },
       }),
-    }
-  );
+    });
+  }
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.error?.message || `Gemini API error (HTTP ${res.status})`);
   }
 
-  const parts = data.candidates?.[0]?.content?.parts || [];
+  const candidate = data.candidates?.[0] || {};
+  const parts = candidate.content?.parts || [];
   const text = parts
     .filter((p) => !p.thought && typeof p.text === "string")
     .map((p) => p.text)
@@ -1011,10 +1039,29 @@ async function generateBookStudyAnswer({
 
   if (!text) throw new Error("Gemini returned an empty response.");
 
+  // Extract deduplicated Google Search grounding sources & queries if used
+  const gMeta = candidate.groundingMetadata || {};
+  const searchQueries = Array.isArray(gMeta.webSearchQueries)
+    ? gMeta.webSearchQueries.filter(Boolean).slice(0, 5)
+    : [];
+  const seenUris = new Set();
+  const sources = [];
+  for (const chObj of gMeta.groundingChunks || []) {
+    const uri = chObj?.web?.uri;
+    const title = chObj?.web?.title || uri;
+    if (uri && !seenUris.has(uri)) {
+      seenUris.add(uri);
+      sources.push({ title: String(title).slice(0, 60), uri: String(uri) });
+      if (sources.length >= 6) break;
+    }
+  }
+
   return {
     answer: text,
     modelId: data.modelVersion || model,
     modelLabel: getModelLabel(model),
+    sources,
+    searchQueries,
   };
 }
 
@@ -1583,7 +1630,7 @@ const server = http.createServer(async (req, res) => {
           createdAt: now,
         };
 
-        const { answer, modelLabel } = await generateBookStudyAnswer({
+        const { answer, modelLabel, sources, searchQueries } = await generateBookStudyAnswer({
           book,
           chapterSlug: ch,
           question,
@@ -1600,6 +1647,8 @@ const server = http.createServer(async (req, res) => {
           highlightQuote: "",
           highlightLoc: modelLabel,
           notesCount: 0,
+          sources: sources || [],
+          searchQueries: searchQueries || [],
           createdAt: Date.now(),
         };
 
