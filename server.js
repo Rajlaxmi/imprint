@@ -328,12 +328,14 @@ function hydrateDataFromPublicLibraryAndSync() {
         if (fs.existsSync(pubStateFile)) {
           fs.copyFileSync(pubStateFile, bookStatePath(id));
         }
-        const pubComics = path.join(pubDir, "comics");
-        if (fs.existsSync(pubComics)) {
-          const dstComics = path.join(dstDir, "comics");
-          fs.mkdirSync(dstComics, { recursive: true });
-          for (const f of fs.readdirSync(pubComics)) {
-            fs.copyFileSync(path.join(pubComics, f), path.join(dstComics, f));
+        for (const assetKind of ["comics", "figures"]) {
+          const pubAssetDir = path.join(pubDir, assetKind);
+          if (fs.existsSync(pubAssetDir)) {
+            const dstAssetDir = path.join(dstDir, assetKind);
+            fs.mkdirSync(dstAssetDir, { recursive: true });
+            for (const f of fs.readdirSync(pubAssetDir)) {
+              fs.copyFileSync(path.join(pubAssetDir, f), path.join(dstAssetDir, f));
+            }
           }
         }
         const seededBook = readBook(id);

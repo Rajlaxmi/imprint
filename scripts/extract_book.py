@@ -100,6 +100,11 @@ class EpubXHTMLConverter(HTMLParser):
         self._in_blockquote = 0
         self._in_aside_note_id = None
         self._aside_buf = []
+        self._in_figure = False
+        self._figure_id = ""
+        self._figure_img_src = ""
+        self._figure_img_alt = ""
+        self._figure_cap_buf = []
         self._current_tag = None
         self._current_attrs = {}
         self._buf = []
@@ -111,6 +116,8 @@ class EpubXHTMLConverter(HTMLParser):
             return
         if self._in_aside_note_id is not None:
             self._aside_buf.append(s)
+        elif self._in_figure:
+            self._figure_cap_buf.append(s)
         elif self._current_tag is not None:
             self._buf.append(s)
 
@@ -170,6 +177,56 @@ class EpubXHTMLConverter(HTMLParser):
             self._flush_block()
             self._in_aside_note_id = elem_id or f"aside_{len(self.footnotes_by_id)+1}"
             self._aside_buf = []
+            return
+
+        if tag == "figure":
+            self._flush_block()
+            self._in_figure = True
+            self._figure_id = elem_id
+            self._figure_img_src = ""
+            self._figure_img_alt = ""
+            self._figure_cap_buf = []
+            return
+
+        if tag == "img":
+            src = (attr_map.get("src") or "").strip()
+            alt = clean_whitespace(attr_map.get("alt") or "")
+            role = (attr_map.get("role") or "").lower()
+            if not src or role == "doc-cover" or re.search(r"(^|/)cover\.(jpg|jpeg|png|webp)$", src, re.I):
+                return
+            if self._in_figure:
+                if not self._figure_img_src:
+                    self._figure_img_src = src
+                    self._figure_img_alt = alt
+            else:
+                self._flush_block()
+                self.blocks.append({
+                    "type": "figure",
+                    "raw_src": src,
+                    "caption": alt,
+                    "html": html.escape(alt),
+                    "id": elem_id,
+                })
+            return
+
+        if self._in_figure:
+            if tag == "br":
+                self._push_buf(" ")
+            elif tag == "span":
+                if "pagebreak" in epub_type or "doc-pagebreak" in epub_type:
+                    pg = attr_map.get("title") or attr_map.get("aria-label") or ""
+                    pg_num = re.sub(r"[^0-9ivxlcdmIVXLCDM]", "", pg)
+                    if pg_num:
+                        self._push_buf(f"[[FOLIO:{pg_num}]]")
+            elif tag in self.INLINE_EM:
+                self._inline_stack.append("em")
+                self._push_buf("<em>")
+            elif tag in self.INLINE_STRONG:
+                self._inline_stack.append("strong")
+                self._push_buf("<strong>")
+            elif tag in self.INLINE_PASSTHROUGH:
+                self._inline_stack.append(tag)
+                self._push_buf(f"<{tag}>")
             return
 
         if tag == "blockquote":
@@ -244,6 +301,37 @@ class EpubXHTMLConverter(HTMLParser):
                 self.footnotes_by_id[self._in_aside_note_id] = raw
             self._in_aside_note_id = None
             self._aside_buf = []
+            return
+
+        if tag == "figure" and self._in_figure:
+            raw_cap = re.sub(r"\s+", " ", "".join(self._figure_cap_buf)).strip()
+            if self._figure_img_src:
+                plain_cap = strip_tags(re.sub(r"\[\[(?:FOLIO|NOTEREF):[^\]]+\]\]", "", raw_cap)) or self._figure_img_alt
+                self.blocks.append({
+                    "type": "figure",
+                    "raw_src": self._figure_img_src,
+                    "caption": plain_cap,
+                    "html": raw_cap,
+                    "id": self._figure_id,
+                })
+            self._in_figure = False
+            self._figure_id = ""
+            self._figure_img_src = ""
+            self._figure_img_alt = ""
+            self._figure_cap_buf = []
+            self._inline_stack.clear()
+            return
+
+        if self._in_figure:
+            if tag in self.INLINE_EM and self._inline_stack and self._inline_stack[-1] == "em":
+                self._inline_stack.pop()
+                self._push_buf("</em>")
+            elif tag in self.INLINE_STRONG and self._inline_stack and self._inline_stack[-1] == "strong":
+                self._inline_stack.pop()
+                self._push_buf("</strong>")
+            elif tag in self.INLINE_PASSTHROUGH and self._inline_stack and self._inline_stack[-1] == tag:
+                self._inline_stack.pop()
+                self._push_buf(f"</{tag}>")
             return
 
         if tag == "blockquote":
@@ -334,8 +422,14 @@ def parse_epub_toc_map(zf: zipfile.ZipFile, opf_dir: str, manifest: dict, opf_ro
     return toc_map
 
 
-def extract_epub_native(epub_path: str) -> dict:
+def extract_epub_native(epub_path: str, out_dir: str = None) -> dict:
+    book_id = os.path.basename(os.path.abspath(out_dir)) if out_dir else ""
+    figures_dir = os.path.join(out_dir, "figures") if out_dir else ""
+    fig_url_prefix = f"/api/books/{book_id}/figures" if book_id.startswith("book_") else "figures"
+
     with zipfile.ZipFile(epub_path, "r") as zf:
+        namelist_set = set(zf.namelist())
+        namelist_lower = {n.lower(): n for n in zf.namelist()}
         container_xml = zf.read("META-INF/container.xml")
         c_root = ET.fromstring(container_xml)
         opf_path = ""
@@ -412,6 +506,7 @@ def extract_epub_native(epub_path: str) -> dict:
                 global_notes[(sp_path, fid)] = fhtml
             # Also capture any block with id that looks like a note if referenced
             for b in parser.blocks:
+                b["doc_path"] = sp_path
                 if b.get("id"):
                     global_notes.setdefault((sp_path, b["id"]), b["html"])
 
@@ -513,6 +608,37 @@ def extract_epub_native(epub_path: str) -> dict:
                     except ValueError:
                         pass
 
+                if b["type"] == "figure":
+                    raw_src = (b.get("raw_src") or "").strip()
+                    if not raw_src:
+                        continue
+                    src_url = ""
+                    if raw_src.startswith(("http://", "https://")):
+                        src_url = raw_src
+                    elif figures_dir:
+                        doc_base = posixpath.dirname(b.get("doc_path") or ch["path"])
+                        clean_rel, _ = urldefrag(unquote(raw_src))
+                        cand = posixpath.normpath(posixpath.join(doc_base, clean_rel)) if doc_base else posixpath.normpath(clean_rel)
+                        zip_entry = cand if cand in namelist_set else namelist_lower.get(cand.lower(), "")
+                        if zip_entry:
+                            os.makedirs(figures_dir, exist_ok=True)
+                            base_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", posixpath.basename(zip_entry))
+                            out_path_img = os.path.join(figures_dir, base_name)
+                            if not os.path.exists(out_path_img):
+                                with open(out_path_img, "wb") as img_f:
+                                    img_f.write(zf.read(zip_entry))
+                            src_url = f"{fig_url_prefix}/{base_name}"
+                    if src_url:
+                        cap_clean = clean_whitespace(b.get("caption") or "")
+                        paragraphs.append({
+                            "type": "figure",
+                            "src": src_url,
+                            "caption": cap_clean,
+                            "html": html.escape(cap_clean),
+                            "page": synthetic_page,
+                        })
+                    continue
+
                 def replace_folio(fm):
                     pg = fm.group(1)
                     return f'<span class="folio-marker" data-page="{html.escape(pg)}" title="Page {html.escape(pg)}">p. {html.escape(pg)}</span>'
@@ -563,7 +689,7 @@ def extract_epub_native(epub_path: str) -> dict:
                 "shortTitle": make_short_title(clean_title, ch_label),
                 "folioStart": ch_start_page,
                 "folioEnd": ch_end_page,
-                "wordCount": sum(count_words(p["html"]) for p in paragraphs),
+                "wordCount": sum(count_words(p.get("html", "")) for p in paragraphs if p.get("type") != "figure"),
                 "paragraphs": paragraphs,
                 "endnotes": ch_notes,
             })
@@ -1752,7 +1878,7 @@ def main():
 
     if ext == ".epub":
         try:
-            result = extract_epub_native(in_path)
+            result = extract_epub_native(in_path, out_dir=out_dir)
         except Exception as epub_err:
             if fitz is not None:
                 result = extract_pdf_with_fitz(in_path, out_dir=out_dir)
