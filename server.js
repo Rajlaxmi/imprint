@@ -1894,6 +1894,29 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, 200, { ok: true, chapter: ch, count: list.length });
       }
 
+      // POST /api/books/:id/chat/sync -> Persist merged client/offline chat history on server
+      if (subroute === "chat/sync" && req.method === "POST") {
+        const body = await readJsonBody(req);
+        const ch = normalizeChapterSlug(body.chapter);
+        const incoming = Array.isArray(body.chatMessages) ? body.chatMessages : [];
+        const state = readBookState(bookId);
+        if (!state.chapters[ch]) state.chapters[ch] = { annotations: [], chatMessages: [] };
+
+        const byId = new Map();
+        for (const m of state.chapters[ch].chatMessages || []) {
+          if (m && m.id) byId.set(m.id, m);
+        }
+        for (const m of incoming) {
+          if (m && m.id) byId.set(m.id, m);
+        }
+        const merged = Array.from(byId.values()).sort(
+          (a, b) => (a.createdAt || 0) - (b.createdAt || 0)
+        );
+        state.chapters[ch].chatMessages = merged;
+        writeBookState(bookId, state);
+        return sendJSON(res, 200, { ok: true, chapter: ch, chatMessages: merged });
+      }
+
       // POST /api/books/:id/endnotes -> Add, update, or delete chapter endnotes (anchored or standalone)
       if (subroute === "endnotes" && req.method === "POST") {
         const body = await readJsonBody(req);

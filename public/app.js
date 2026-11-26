@@ -11,14 +11,16 @@
      0. Browser IndexedDB + localStorage Persistence ("Book data stored in website")
      ======================================================================== */
   const IDB_NAME = "BookVizStudioDB";
-  const IDB_VERSION = 1;
+  const IDB_VERSION = 2;
   const IDB_BOOK_STORE = "books";
+  const IDB_STATE_STORE = "states";
 
   const PREFS_KEY = "bvs_reader_prefs_v1";
   const ACTIVE_BOOK_KEY = "bvs_active_book_v1";
+  const RIGHT_TAB_KEY = "bvs_right_tab_v1";
 
   function openBookDB() {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (!("indexedDB" in window)) return resolve(null);
       const req = indexedDB.open(IDB_NAME, IDB_VERSION);
       req.onupgradeneeded = () => {
@@ -26,8 +28,42 @@
         if (!db.objectStoreNames.contains(IDB_BOOK_STORE)) {
           db.createObjectStore(IDB_BOOK_STORE, { keyPath: "id" });
         }
+        if (!db.objectStoreNames.contains(IDB_STATE_STORE)) {
+          db.createObjectStore(IDB_STATE_STORE, { keyPath: "id" });
+        }
       };
       req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+  }
+
+  async function idbSaveChapterState(bookId, ch, data) {
+    if (!bookId || !ch) return;
+    const db = await openBookDB();
+    if (!db || !db.objectStoreNames.contains(IDB_STATE_STORE)) return;
+    return new Promise((resolve) => {
+      const tx = db.transaction(IDB_STATE_STORE, "readwrite");
+      tx.objectStore(IDB_STATE_STORE).put({
+        id: `${bookId}::${ch}`,
+        bookId,
+        chapter: ch,
+        annotations: data.annotations || [],
+        chatMessages: data.chatMessages || [],
+        updatedAt: Date.now(),
+      });
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    });
+  }
+
+  async function idbGetChapterState(bookId, ch) {
+    if (!bookId || !ch) return null;
+    const db = await openBookDB();
+    if (!db || !db.objectStoreNames.contains(IDB_STATE_STORE)) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction(IDB_STATE_STORE, "readonly");
+      const req = tx.objectStore(IDB_STATE_STORE).get(`${bookId}::${ch}`);
+      req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => resolve(null);
     });
   }
@@ -103,6 +139,28 @@
   }
   function chatStorageKey(bookId, ch) {
     return `bvs_${bookId}_${ch}_chat`;
+  }
+  function chatClearedKey(bookId, ch) {
+    return `bvs_${bookId}_${ch}_chat_cleared_at`;
+  }
+
+  function mergeChatMessageLists(lists, clearedAfter = 0) {
+    const byId = new Map();
+    for (const arr of lists) {
+      if (!Array.isArray(arr)) continue;
+      for (const m of arr) {
+        if (!m || !m.id) continue;
+        if (clearedAfter && (m.createdAt || 0) <= clearedAfter) continue;
+        byId.set(m.id, m);
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  }
+
+  function persistChatLocally(bookId, ch, messages) {
+    saveJSON(chatStorageKey(bookId, ch), messages);
+    const existingAnns = chapterData[ch]?.annotations || loadJSON(annStorageKey(bookId, ch), []);
+    idbSaveChapterState(bookId, ch, { annotations: existingAnns, chatMessages: messages });
   }
 
   /* ========================================================================
@@ -195,6 +253,7 @@
 
   const tabNotesBtn = document.getElementById("tabNotesBtn");
   const tabAiBtn = document.getElementById("tabAiBtn");
+  const aiChatTabCount = document.getElementById("aiChatTabCount");
   const tabEndnotesBtn = document.getElementById("tabEndnotesBtn");
   const endnotesTabCount = document.getElementById("endnotesTabCount");
   const userNotesPane = document.getElementById("userNotesPane");
@@ -724,19 +783,31 @@
   rightRailClose.addEventListener("click", closeMobileDrawers);
   drawerBackdrop.addEventListener("click", closeMobileDrawers);
 
-  function switchRightTab(tabName) {
+  function switchRightTab(tabName, persistChoice = true) {
+    const validName = ["notes", "ai", "endnotes"].includes(tabName) ? tabName : "notes";
     const tabs = [
       { name: "notes", btn: tabNotesBtn, pane: userNotesPane },
       { name: "ai", btn: tabAiBtn, pane: aiChatPane },
       { name: "endnotes", btn: tabEndnotesBtn, pane: bookEndnotesPane },
     ];
     tabs.forEach(({ name, btn, pane }) => {
-      const active = name === tabName;
+      const active = name === validName;
       btn.classList.toggle("is-active", active);
       btn.setAttribute("aria-selected", String(active));
       pane.hidden = !active;
     });
+    if (persistChoice) {
+      saveJSON(RIGHT_TAB_KEY, validName);
+    }
+    if (validName === "ai" && aiMessagesList) {
+      requestAnimationFrame(() => {
+        aiMessagesList.scrollTop = aiMessagesList.scrollHeight;
+      });
+    }
   }
+
+  // Restore last active right-sidebar tab across page refreshes
+  switchRightTab(loadJSON(RIGHT_TAB_KEY, "notes"), false);
 
   tabNotesBtn.addEventListener("click", () => switchRightTab("notes"));
   tabAiBtn.addEventListener("click", () => switchRightTab("ai"));
@@ -1576,6 +1647,7 @@
     CHAPTER_META = {};
     CHAPTER_ORDER = allChapterArticles.map((a) => a.dataset.chapter);
 
+    const prevChapterData = currentBook && currentBook.id === book.id ? chapterData : {};
     chapterData = {};
     allChapterArticles.forEach((art, idx) => {
       const slug = art.dataset.chapter;
@@ -1605,9 +1677,10 @@
         exportName: `${book.id}-${slug}-notes.md`,
       };
 
+      const mem = prevChapterData[slug];
       chapterData[slug] = {
-        annotations: loadJSON(annStorageKey(book.id, slug), []),
-        chatMessages: loadJSON(chatStorageKey(book.id, slug), []),
+        annotations: mem?.annotations || loadJSON(annStorageKey(book.id, slug), []),
+        chatMessages: mem?.chatMessages || loadJSON(chatStorageKey(book.id, slug), []),
       };
 
       art.addEventListener("click", (e) => {
@@ -2068,6 +2141,10 @@
     const ch = activeChapter;
     const chAnns = chapterData[ch].annotations;
     saveJSON(annStorageKey(currentBook.id, ch), chAnns);
+    idbSaveChapterState(currentBook.id, ch, {
+      annotations: chAnns,
+      chatMessages: chapterData[ch].chatMessages || [],
+    });
     if (!serverAvailable) return;
     clearTimeout(syncTimer);
     const bookId = currentBook.id;
@@ -2083,33 +2160,56 @@
   }
 
   async function hydrateBookAnnotationsFromServer(bookId) {
-    if (!serverAvailable || !bookId) return;
+    if (!bookId) return;
+    let remoteChapters = {};
     try {
       const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/state`);
-      if (!res.ok) return;
-      const remote = await res.json();
-      const remoteChapters = remote.chapters || {};
-      for (const ch of Object.keys(CHAPTER_META)) {
-        const rc = remoteChapters[ch] || {};
-        const rAnns = Array.isArray(rc.annotations) ? rc.annotations : [];
-        const rChat = Array.isArray(rc.chatMessages) ? rc.chatMessages : [];
-        if (rAnns.length > 0) {
-          chapterData[ch].annotations = rAnns;
-          saveJSON(annStorageKey(bookId, ch), rAnns);
-        }
-        if (rChat.length > 0) {
-          chapterData[ch].chatMessages = rChat;
-          saveJSON(chatStorageKey(bookId, ch), rChat);
-        }
-      }
-      if (currentBook && currentBook.id === bookId && CHAPTER_META[activeChapter]) {
-        annotations = chapterData[activeChapter].annotations;
-        chatMessages = chapterData[activeChapter].chatMessages;
-        renderTextHighlights();
-        renderNotesList();
-        renderChatMessages();
+      if (res.ok) {
+        serverAvailable = true;
+        const remote = await res.json();
+        remoteChapters = remote.chapters || {};
       }
     } catch (_) {}
+
+    for (const ch of Object.keys(CHAPTER_META)) {
+      const rc = remoteChapters[ch] || {};
+      const idbState = await idbGetChapterState(bookId, ch);
+      const localAnns = chapterData[ch]?.annotations || loadJSON(annStorageKey(bookId, ch), []);
+      const localChat = chapterData[ch]?.chatMessages || loadJSON(chatStorageKey(bookId, ch), []);
+      const clearedAt = Number(loadJSON(chatClearedKey(bookId, ch), 0)) || 0;
+
+      // Annotations: prefer remote if non-empty, else IndexedDB, else localStorage
+      const rAnns = Array.isArray(rc.annotations) ? rc.annotations : [];
+      const iAnns = Array.isArray(idbState?.annotations) ? idbState.annotations : [];
+      const bestAnns = rAnns.length > 0 ? rAnns : iAnns.length > 0 ? iAnns : localAnns;
+      chapterData[ch].annotations = bestAnns;
+
+      // Chat Messages: union-merge Server + IndexedDB + localStorage by message ID!
+      const rChat = Array.isArray(rc.chatMessages) ? rc.chatMessages : [];
+      const iChat = Array.isArray(idbState?.chatMessages) ? idbState.chatMessages : [];
+      const mergedChat = mergeChatMessageLists([rChat, iChat, localChat], clearedAt);
+      chapterData[ch].chatMessages = mergedChat;
+
+      saveJSON(annStorageKey(bookId, ch), bestAnns);
+      persistChatLocally(bookId, ch, mergedChat);
+
+      // Push any client-only chat messages back to server so state.json stays complete
+      if (serverAvailable && mergedChat.length > rChat.length) {
+        fetch(`/api/books/${encodeURIComponent(bookId)}/chat/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chapter: ch, chatMessages: mergedChat }),
+        }).catch(() => {});
+      }
+    }
+
+    if (currentBook && currentBook.id === bookId && CHAPTER_META[activeChapter]) {
+      annotations = chapterData[activeChapter].annotations;
+      chatMessages = chapterData[activeChapter].chatMessages;
+      renderTextHighlights();
+      renderNotesList();
+      renderChatMessages();
+    }
   }
 
   aiModelSelect.addEventListener("change", async () => {
@@ -2777,6 +2877,10 @@
   /* AI Chat */
   function renderChatMessages() {
     clearChatBtn.hidden = chatMessages.length === 0;
+    if (aiChatTabCount) {
+      const assistantReplies = chatMessages.filter((m) => m.role === "assistant").length;
+      aiChatTabCount.textContent = String(assistantReplies || chatMessages.length);
+    }
     aiMessagesList.querySelectorAll(".ai-msg").forEach((el) => el.remove());
     aiEmptyState.hidden = chatMessages.length > 0;
 
@@ -2918,8 +3022,11 @@
       pendingBubble.remove();
       if (!res.ok) throw new Error(data.error || "Gemini request failed.");
 
-      chapterData[ch].chatMessages.push(data.userMessage, data.assistantMessage);
-      saveJSON(chatStorageKey(bookId, ch), chapterData[ch].chatMessages);
+      chapterData[ch].chatMessages = mergeChatMessageLists([
+        chapterData[ch].chatMessages,
+        [data.userMessage, data.assistantMessage],
+      ]);
+      persistChatLocally(bookId, ch, chapterData[ch].chatMessages);
       if (currentBook.id === bookId && activeChapter === ch) {
         chatMessages = chapterData[ch].chatMessages;
         renderChatMessages();
@@ -2947,15 +3054,14 @@
     if (!chatMessages.length || !currentBook) return;
     if (!window.confirm("Clear AI chat thread for this chapter?")) return;
     const ch = activeChapter;
+    saveJSON(chatClearedKey(currentBook.id, ch), Date.now());
     chapterData[ch].chatMessages = [];
     chatMessages = [];
-    saveJSON(chatStorageKey(currentBook.id, ch), []);
+    persistChatLocally(currentBook.id, ch, []);
     renderChatMessages();
-    if (serverAvailable) {
-      await fetch(`/api/books/${encodeURIComponent(currentBook.id)}/chat?chapter=${encodeURIComponent(ch)}`, {
-        method: "DELETE",
-      }).catch(() => {});
-    }
+    await fetch(`/api/books/${encodeURIComponent(currentBook.id)}/chat?chapter=${encodeURIComponent(ch)}`, {
+      method: "DELETE",
+    }).catch(() => {});
   });
 
   /* ========================================================================
