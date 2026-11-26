@@ -458,6 +458,57 @@ html[data-width="wide"] { --measure: 47rem; }
   min-width: 0;
 }
 
+.endnote-prose {
+  font-family: var(--font-sans);
+  font-size: 0.79rem;
+  line-height: 1.54;
+  color: var(--ink);
+}
+
+.endnote-prose p {
+  margin: 0 0 0.48rem;
+  text-indent: 0 !important;
+}
+
+.endnote-prose p:last-child {
+  margin-bottom: 0;
+}
+
+.endnote-prose.is-collapsed {
+  position: relative;
+  max-height: 14rem;
+  overflow: hidden;
+}
+
+.endnote-prose.is-collapsed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.6rem;
+  background: linear-gradient(to bottom, transparent, var(--bg-rail));
+  pointer-events: none;
+}
+
+.rail-endnotes-list li.is-highlighted .endnote-prose.is-collapsed::after {
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent-soft) 70%, var(--bg-rail)));
+}
+
+.endnotes__body .endnote-prose {
+  font-family: var(--font-serif);
+  font-size: 0.94em;
+  line-height: 1.58;
+}
+
+.rail-endnotes-item__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-top: 0.32rem;
+}
+
 .rail-endnotes-item__tools {
   display: inline-flex;
   align-items: center;

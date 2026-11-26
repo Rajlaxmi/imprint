@@ -208,11 +208,39 @@ function writeBookState(bookId, state) {
   fs.renameSync(tmp, target);
 }
 
+function decodeHtmlEntitiesBasic(str) {
+  return String(str || "")
+    .replace(/&#(\d+);/g, (_, d) => {
+      try {
+        return String.fromCodePoint(Number(d));
+      } catch (_) {
+        return _;
+      }
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => {
+      try {
+        return String.fromCodePoint(parseInt(h, 16));
+      } catch (_) {
+        return _;
+      }
+    })
+    .replace(/&nbsp;/g, " ")
+    .replace(/&mdash;/g, "—")
+    .replace(/&ndash;/g, "–")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 function stripTags(htmlStr) {
-  return String(htmlStr || "")
-    .replace(/<span class="folio-marker"[^>]*>.*?<\/span>/gi, " ")
-    .replace(/<sup class="note-ref">.*?<\/sup>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
+  return decodeHtmlEntitiesBasic(
+    String(htmlStr || "")
+      .replace(/<span class="folio-marker"[^>]*>.*?<\/span>/gi, " ")
+      .replace(/<sup class="note-ref"[^>]*>.*?<\/sup>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+  )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -235,17 +263,16 @@ function escapeHtmlServer(str) {
     .replace(/"/g, "&quot;");
 }
 
-function markdownToEndnoteHtml(rawText) {
-  const escaped = escapeHtmlServer(String(rawText || "").trim()).replace(/\r?\n+/g, " ");
+function formatInlineNoteServer(escapedLine) {
   const linkTokens = [];
-  let out = escaped.replace(
+  let out = escapedLine.replace(
     /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
     (_, label, url) => {
       const idx = linkTokens.length;
       linkTokens.push(
         `<a href="${url}" target="_blank" rel="noopener noreferrer" class="prose-link">${label}</a>`
       );
-      return `@@ENLINK_${idx}@@`;
+      return `%%ENLNK${idx}%%`;
     }
   );
   out = out.replace(/(^|[\s(>])(https?:\/\/[^\s<)"']+)/g, (_, prefix, rawUrl) => {
@@ -256,16 +283,101 @@ function markdownToEndnoteHtml(rawText) {
     linkTokens.push(
       `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="prose-link">${cleanUrl}</a>`
     );
-    return `${prefix}@@ENLINK_${idx}@@${suffix}`;
+    return `${prefix}%%ENLNK${idx}%%${suffix}`;
   });
   out = out
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, "$1<em>$2</em>");
   linkTokens.forEach((htmlLink, idx) => {
-    out = out.replace(`@@ENLINK_${idx}@@`, htmlLink);
+    out = out.split(`%%ENLNK${idx}%%`).join(htmlLink);
   });
   return out;
+}
+
+function markdownToEndnoteHtml(rawText) {
+  // Protect inline math $...$ before emphasis rules so LaTeX underscores/asterisks stay intact
+  const mathTokens = [];
+  const pre = String(rawText || "")
+    .trim()
+    .replace(/\r\n/g, "\n")
+    .replace(/\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|\$(?!\s)(?:\\.|[^$\\\n])+?(?<!\s)\$/g, (m) => {
+      const idx = mathTokens.length;
+      mathTokens.push(escapeHtmlServer(m));
+      return `%%ENMTH${idx}%%`;
+    });
+
+  const lines = pre.split("\n");
+  const blocks = [];
+  let para = [];
+  let listType = null;
+  let listItems = [];
+
+  const flushPara = () => {
+    if (!para.length) return;
+    blocks.push(`<p>${para.map(formatInlineNoteServer).join("<br/>")}</p>`);
+    para = [];
+  };
+  const flushList = () => {
+    if (!listItems.length) return;
+    const tag = listType === "ol" ? "ol" : "ul";
+    blocks.push(
+      `<${tag} class="md-list">${listItems.map((li) => `<li>${formatInlineNoteServer(li)}</li>`).join("")}</${tag}>`
+    );
+    listType = null;
+    listItems = [];
+  };
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      flushPara();
+      flushList();
+      continue;
+    }
+    if (/^(-{3,}|\*{3,})$/.test(trimmed)) {
+      flushPara();
+      flushList();
+      blocks.push('<hr class="md-hr" />');
+      continue;
+    }
+    const hMatch = trimmed.match(/^(#{1,4})\s+(.+)$/);
+    if (hMatch) {
+      flushPara();
+      flushList();
+      blocks.push(`<h4 class="md-h4">${formatInlineNoteServer(escapeHtmlServer(hMatch[2]))}</h4>`);
+      continue;
+    }
+    const ulMatch = trimmed.match(/^[-*•]\s+(.+)$/);
+    if (ulMatch) {
+      flushPara();
+      if (listType && listType !== "ul") flushList();
+      listType = "ul";
+      listItems.push(escapeHtmlServer(ulMatch[1]));
+      continue;
+    }
+    const olMatch = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (olMatch) {
+      flushPara();
+      if (listType && listType !== "ol") flushList();
+      listType = "ol";
+      listItems.push(escapeHtmlServer(olMatch[1]));
+      continue;
+    }
+    flushList();
+    para.push(escapeHtmlServer(trimmed));
+  }
+  flushPara();
+  flushList();
+
+  let htmlOut = blocks.length === 1 && blocks[0].startsWith("<p>")
+    ? blocks[0].slice(3, -4)
+    : blocks.join("");
+
+  mathTokens.forEach((m, idx) => {
+    htmlOut = htmlOut.split(`%%ENMTH${idx}%%`).join(m);
+  });
+  return htmlOut;
 }
 
 function decodeEntityUtf16Len(entity) {

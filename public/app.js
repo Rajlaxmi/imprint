@@ -272,6 +272,7 @@
   const editingNoteIds = new Set();
   const expandedNoteIds = new Set();
   const editingEndnoteNums = new Set();
+  const expandedEndnoteNums = new Set();
   const visualControllers = new Map(); // sectionId -> controller
 
   function escapeHTML(str) {
@@ -411,6 +412,19 @@
       return renderLatexToHTML(inner, false);
     });
     return out;
+  }
+
+  function renderEndnoteContentHTML(noteObj, extraCls = "") {
+    if (noteObj && typeof noteObj.rawText === "string" && noteObj.rawText.trim()) {
+      const raw = noteObj.rawText.trim();
+      const isMultiBlock = /\n|^#{1,4}\s|^[-*•]\s|^\d+[.)]\s/.test(raw);
+      if (isMultiBlock) {
+        return `<div class="md-prose endnote-prose ${extraCls}">${formatAiTextToHTML(raw)}</div>`;
+      }
+      const singleHtml = formatAiTextToHTML(raw).replace(/^<p>([\s\S]*)<\/p>$/, "$1");
+      return `<span class="endnote-inline">${singleHtml}</span>`;
+    }
+    return renderMathInHtmlSnippet(noteObj?.html || "");
   }
 
   function formatInlineMarkdown(escapedLine) {
@@ -1511,7 +1525,7 @@
                       return `<li id="ch${ch.num}-note-${n.num}" data-note-uid="${escapeHTML(
                         n.uid || ""
                       )}"><span class="endnotes__body">${
-                        renderMathInHtmlSnippet(n.html) || "<em>(Empty endnote)</em>"
+                        renderEndnoteContentHTML(n) || "<em>(Empty endnote)</em>"
                       }</span> ${backHtml}</li>`;
                     }
                   )
@@ -1763,6 +1777,9 @@
           }
         });
       } else {
+        const rawStr = String(n.rawText || "");
+        const isLongMulti = rawStr.length > 560 && /\n/.test(rawStr);
+        const isExpanded = expandedEndnoteNums.has(num);
         const backLinkHtml =
           n.anchored === false
             ? `<span class="endnotes__back">p. ${n.page || chObj.folioStart || 1}</span>`
@@ -1770,17 +1787,42 @@
                 meta.refPrefix
               }${num}">&crarr; p. ${n.page || chObj.folioStart || 1}</a>`;
 
+        const renderedBody =
+          renderEndnoteContentHTML(n, isLongMulti && !isExpanded ? "is-collapsed" : "") ||
+          "<em>(Empty endnote)</em>";
+
         cloneLi.innerHTML = `
           <div class="rail-endnotes-item__row">
             <div class="rail-endnotes-item__body">
-              ${renderMathInHtmlSnippet(n.html) || "<em>(Empty endnote)</em>"} ${backLinkHtml}
-            </div>
-            <div class="rail-endnotes-item__tools">
-              <button type="button" class="note-card__ghost-btn" data-edit-endnote="${num}" title="Edit endnote">Edit</button>
-              <button type="button" class="note-card__delete" data-delete-endnote="${num}" title="Delete endnote" aria-label="Delete endnote ${num}">&times;</button>
+              ${renderedBody}
+              <div class="rail-endnotes-item__footer">
+                <div>
+                  ${backLinkHtml}
+                  ${
+                    isLongMulti
+                      ? `<button type="button" class="note-card__ghost-btn" data-expand-endnote="${num}">${
+                          isExpanded ? "Collapse &uarr;" : "Show full endnote &darr;"
+                        }</button>`
+                      : ""
+                  }
+                </div>
+                <div class="rail-endnotes-item__tools">
+                  <button type="button" class="note-card__ghost-btn" data-edit-endnote="${num}" title="Edit endnote">Edit</button>
+                  <button type="button" class="note-card__delete" data-delete-endnote="${num}" title="Delete endnote" aria-label="Delete endnote ${num}">&times;</button>
+                </div>
+              </div>
             </div>
           </div>
         `;
+
+        const expandBtn = cloneLi.querySelector("[data-expand-endnote]");
+        if (expandBtn) {
+          expandBtn.addEventListener("click", () => {
+            if (expandedEndnoteNums.has(num)) expandedEndnoteNums.delete(num);
+            else expandedEndnoteNums.add(num);
+            populateRailEndnotes();
+          });
+        }
 
         cloneLi.querySelector("[data-edit-endnote]").addEventListener("click", () => {
           editingEndnoteNums.add(num);
@@ -2789,15 +2831,16 @@
             const quoteText = (prevUser && prevUser.highlightQuote) || "";
             endnoteAiBtn.disabled = true;
             endnoteAiBtn.textContent = "Adding…";
-            const compactNoteText = String(msg.content || "")
-              .replace(/^#{1,4}\s+/gm, "")
-              .replace(/\n+/g, " ")
-              .trim();
-            await mutateEndnoteOnServer({
+            const fullMarkdownText = String(msg.content || "").trim();
+            const res = await mutateEndnoteOnServer({
               action: "add",
-              text: compactNoteText,
+              text: fullMarkdownText,
               anchorQuote: quoteText,
             });
+            if (res && res.createdNum) {
+              expandedEndnoteNums.add(res.createdNum);
+              populateRailEndnotes();
+            }
             endnoteAiBtn.textContent = "✓ Endnote";
           });
         }
