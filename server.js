@@ -1,5 +1,5 @@
 /**
- * Book Viz Studio — Zero-Dependency Node Server + Background Gemini Book Pipeline
+ * Imprint — Zero-Dependency Node Server + Background Gemini Book Pipeline
  *
  * Anyone can upload an .epub or .pdf book:
  *  1. Extracts the book's actual full chapter prose, folios, blockquotes & endnotes immediately.
@@ -2137,7 +2137,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(
-    `Book Viz Studio running at http://${HOST}:${PORT}/ (Chat Model: ${getModelLabel(
+    `Imprint running at http://${HOST}:${PORT}/ (Chat Model: ${getModelLabel(
       activeModel
     )} [${activeModel}], API Key: ${process.env.GEMINI_API_KEY ? "connected" : "missing"})`
   );

@@ -1,5 +1,5 @@
 /**
- * Book Viz Studio — Interactive Multi-Book Reader + Background Gemini Sync + IndexedDB Storage
+ * Imprint — Interactive Multi-Book Reader + Background Gemini Sync + IndexedDB Storage
  * Renders uploaded EPUB / PDF books in the exact 3-column Melville House visualization.
  */
 (function () {
@@ -823,12 +823,12 @@
     activeView = viewName === "reader" ? "reader" : "index";
     root.setAttribute("data-view", activeView);
     if (activeView === "index") {
-      document.title = "Book Viz Studio | Library Index";
+      document.title = "Imprint | Library Index";
       closeAllDropdowns(null);
       closeNotePopover();
       hideSelectionToolbar();
     } else if (currentBook) {
-      document.title = `${currentBook.title} | ${currentBook.author} — Book Viz Studio`;
+      document.title = `${currentBook.title} | ${currentBook.author} — Imprint`;
       requestAnimationFrame(fitReceiptTitle);
     }
   }
@@ -1298,8 +1298,8 @@
     }</em> &mdash; ${escapeHTML(book.author)}`;
     colophonPub.textContent = `${book.publisherMeta || "Digital Edition"}${
       book.pubDate ? " · " + book.pubDate : ""
-    } · ${(book.chapters || []).length} chapters · ${(book.wordCount || 0).toLocaleString()} words · Stored in Book Viz Studio`;
-    document.title = `${book.title} | ${book.author} — Book Viz Studio`;
+    } · ${(book.chapters || []).length} chapters · ${(book.wordCount || 0).toLocaleString()} words · Imprint Edition`;
+    document.title = `${book.title} | ${book.author} — Imprint`;
   }
 
   function rebuildChapterMenus(book) {

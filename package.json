@@ -1,7 +1,7 @@
 {
-  "name": "book-viz-studio",
+  "name": "imprint",
   "version": "1.0.0",
-  "description": "Upload any EPUB or PDF book for background Gemini processing into an interactive editorial edition with Story Comics, animated SVG diagrams, margin notes, and Gemini 4 Neon AI study chat.",
+  "description": "Imprint — Turn any EPUB, PDF, or web essay into an interactive editorial edition with Story Comics, animated SVG diagrams, margin notes, endnotes, and Gemini 4 Neon AI study chat.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
