@@ -218,9 +218,9 @@ function writeBookState(bookId, state) {
 function rewriteComicUrlForStatic(urlStr, bookId) {
   const raw = String(urlStr || "");
   if (!raw) return "";
-  const m = raw.match(/^\/?api\/books\/(book_[a-z0-9_]+)\/comics\/([^?#]+)(\?.*)?$/i);
+  const m = raw.match(/^\/?api\/books\/(book_[a-z0-9_]+)\/(comics|figures)\/([^?#]+)(\?.*)?$/i);
   if (m) {
-    return `library/${m[1]}/comics/${m[2]}${m[3] || ""}`;
+    return `library/${m[1]}/${m[2].toLowerCase()}/${m[3]}${m[4] || ""}`;
   }
   return raw;
 }
@@ -257,25 +257,32 @@ function syncBookToPublicLibrary(bookId) {
     const destDir = path.join(PUBLIC_LIB_DIR, bookId);
     fs.mkdirSync(destDir, { recursive: true });
 
-    // Copy Story Comic images to public/library/<bookId>/comics/
-    const srcComicsDir = path.join(bookDir(bookId), "comics");
-    if (fs.existsSync(srcComicsDir)) {
-      const destComicsDir = path.join(destDir, "comics");
-      fs.mkdirSync(destComicsDir, { recursive: true });
-      for (const fname of fs.readdirSync(srcComicsDir)) {
-        if (/\.(jpg|jpeg|png|webp)$/i.test(fname)) {
-          fs.copyFileSync(path.join(srcComicsDir, fname), path.join(destComicsDir, fname));
+    // Copy Story Comic & PDF Figure images to public/library/<bookId>/{comics,figures}/
+    for (const assetKind of ["comics", "figures"]) {
+      const srcAssetDir = path.join(bookDir(bookId), assetKind);
+      if (fs.existsSync(srcAssetDir)) {
+        const destAssetDir = path.join(destDir, assetKind);
+        fs.mkdirSync(destAssetDir, { recursive: true });
+        for (const fname of fs.readdirSync(srcAssetDir)) {
+          if (/\.(jpg|jpeg|png|webp|gif|svg)$/i.test(fname)) {
+            fs.copyFileSync(path.join(srcAssetDir, fname), path.join(destAssetDir, fname));
+          }
         }
       }
     }
 
-    // Clone book without host filesystem paths & rewrite comic URLs to relative static paths
+    // Clone book without host filesystem paths & rewrite comic/figure URLs to relative static paths
     const pubBook = JSON.parse(JSON.stringify(book));
     delete pubBook.sourcePath;
     for (const ch of pubBook.chapters || []) {
       for (const sec of ch.sections || []) {
         if (sec.comicUrl) {
           sec.comicUrl = rewriteComicUrlForStatic(sec.comicUrl, bookId);
+        }
+      }
+      for (const p of ch.paragraphs || []) {
+        if (p.type === "figure" && p.src) {
+          p.src = rewriteComicUrlForStatic(p.src, bookId);
         }
       }
     }
@@ -963,6 +970,9 @@ async function processBookInBackground(bookId, options = {}) {
       book.author = extracted.author || "Unknown Author";
       book.publisherMeta = extracted.publisherMeta || "DIGITAL EDITION";
       book.pubDate = extracted.pubDate || "";
+      if (!book.sourceUrl && extracted.sourceUrl) {
+        book.sourceUrl = extracted.sourceUrl;
+      }
       book.totalPages = extracted.totalPages || 1;
       book.wordCount = extracted.wordCount || 0;
       book.balanceDue = "OPEN EDITION";
@@ -1783,9 +1793,9 @@ const server = http.createServer(async (req, res) => {
         String(req.headers["x-filename"] || parsedUrl.searchParams.get("filename") || "book.epub")
       );
       const ext = path.extname(rawName).toLowerCase();
-      if (ext !== ".epub" && ext !== ".pdf") {
+      if (![".epub", ".pdf", ".html", ".htm"].includes(ext)) {
         return sendJSON(res, 400, {
-          error: "Unsupported file format. Please upload an .epub or .pdf file.",
+          error: "Unsupported file format. Please upload an .epub, .pdf, or saved .html file.",
         });
       }
 
@@ -2017,17 +2027,17 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, 202, { ok: true });
       }
 
-      // GET /api/books/:id/comics/:filename -> Serve generated comic image
-      const comicMatch = subroute.match(/^comics\/([a-zA-Z0-9_.-]+\.(?:jpg|jpeg|png|webp))$/);
-      if (comicMatch && req.method === "GET") {
-        const imgPath = path.join(bookDir(bookId), "comics", comicMatch[1]);
+      // GET /api/books/:id/(comics|figures)/:filename -> Serve generated comic or extracted PDF figure
+      const assetMatch = subroute.match(/^(comics|figures)\/([a-zA-Z0-9_.-]+\.(?:jpg|jpeg|png|webp|gif|svg))$/);
+      if (assetMatch && req.method === "GET") {
+        const imgPath = path.join(bookDir(bookId), assetMatch[1], assetMatch[2]);
         if (!fs.existsSync(imgPath)) {
           res.writeHead(404, { "Content-Type": "text/plain" });
-          return res.end("Comic not found");
+          return res.end("Image not found");
         }
         const ext = path.extname(imgPath).toLowerCase();
         res.writeHead(200, {
-          "Content-Type": MIME_TYPES[ext] || "image/jpeg",
+          "Content-Type": MIME_TYPES[ext] || "image/png",
           "Cache-Control": "public, max-age=86400",
         });
         return fs.createReadStream(imgPath).pipe(res);

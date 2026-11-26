@@ -595,10 +595,96 @@ def extract_epub_native(epub_path: str) -> dict:
 
 
 # ============================================================================
-# PDF Extractor via PyMuPDF (fitz) — Preserves Actual Prose, Italics & Folios
+# PDF Extractor via PyMuPDF (fitz) — Main Content Isolation + Inline Figures
 # ============================================================================
 
-def extract_pdf_with_fitz(pdf_path: str) -> dict:
+PDF_PRINT_HEADER_RE = re.compile(
+    r"^(\d{1,2}/\d{1,2}/\d{2,4},?\s+\d{1,2}:\d{2}\s*(AM|PM)\b|https?://\S+\s+\d+\s*/\s*\d+$)",
+    re.I,
+)
+
+PDF_SOCIAL_WIDGET_RE = re.compile(
+    r"^(\d+(\s+\d+)*(\s*(Share|Likes?|Restacks?|Comments?))?|Share|Restack|Subscribe|Listen|Paid|Free)$",
+    re.I,
+)
+
+PDF_DATE_BYLINE_RE = re.compile(
+    r"^((?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\s+\d{1,2},?\s+20\d{2})(?:\s*[∙·•|\-–—]\s*(?:PAID|FREE|SUBSCRIBER[S\s]*ONLY|\d+\s*MIN\s*READ))?$",
+    re.I,
+)
+
+PDF_TAIL_CUTOFF_RE = re.compile(
+    r"^("
+    r"Recommend\s+.+\s+to\s+your\s+readers\b|"
+    r"Discussion\s+about\s+this\s+post\b|"
+    r"Comments\s+Restacks\b|"
+    r"Write\s+a\s+comment\.{2,}|"
+    r"\d+\s+Likes?\s*[∙·•]\s*\d+\s+Restacks?\b|"
+    r"Leave\s+a\s+(?:comment|reply)\b|"
+    r"Ready\s+for\s+more\?|"
+    r"Substack\s+is\s+the\s+home\s+for\s+writing\b|"
+    r"©\s*(?:19|20)\d{2}\b.*(?:Privacy|Terms|Collection\s+notice)"
+    r")",
+    re.I,
+)
+
+PDF_CAPTION_PREFIX_RE = re.compile(
+    r"^(Source|Sources|Figure|Fig\.|Chart|Exhibit|Table|Note|Notes|Credit|Image)s?\s*[:\-–—]",
+    re.I,
+)
+
+
+def _save_pdf_xref_image(doc, xref: int, figures_dir: str, out_stem: str) -> tuple:
+    """Extracts an image xref from PyMuPDF doc into figures_dir, handling alpha smasks cleanly."""
+    try:
+        info = doc.extract_image(xref)
+        if not info or not info.get("image"):
+            return ("", 0, 0)
+        w = int(info.get("width") or 0)
+        h = int(info.get("height") or 0)
+        smask = int(info.get("smask") or 0)
+        os.makedirs(figures_dir, exist_ok=True)
+
+        if smask > 0:
+            pix0 = fitz.Pixmap(doc, xref)
+            mask = fitz.Pixmap(doc, smask)
+            if pix0.alpha:
+                pix0 = fitz.Pixmap(pix0, 0)
+            pix = fitz.Pixmap(pix0, mask)
+            fname = f"{out_stem}.png"
+            pix.save(os.path.join(figures_dir, fname))
+            return (fname, pix.width, pix.height)
+
+        ext = (info.get("ext") or "png").lower()
+        if ext == "jpeg":
+            ext = "jpg"
+        if ext not in ("png", "jpg", "webp"):
+            pix = fitz.Pixmap(doc, xref)
+            if pix.n - pix.alpha > 3:
+                pix = fitz.Pixmap(fitz.csRGB, pix)
+            fname = f"{out_stem}.png"
+            pix.save(os.path.join(figures_dir, fname))
+            return (fname, pix.width, pix.height)
+
+        fname = f"{out_stem}.{ext}"
+        with open(os.path.join(figures_dir, fname), "wb") as f:
+            f.write(info["image"])
+        return (fname, w, h)
+    except Exception:
+        return ("", 0, 0)
+
+
+def _find_link_for_span_bbox(span_bbox, page_links: list) -> str:
+    sx0, sy0, sx1, sy1 = span_bbox
+    scx = (sx0 + sx1) * 0.5
+    scy = (sy0 + sy1) * 0.5
+    for r, uri in page_links:
+        if r.x0 - 2 <= scx <= r.x1 + 2 and r.y0 - 2 <= scy <= r.y1 + 2:
+            return uri
+    return ""
+
+
+def extract_pdf_with_fitz(pdf_path: str, out_dir: str = None) -> dict:
     if fitz is None:
         raise RuntimeError("PyMuPDF (fitz) is required for PDF extraction.")
 
@@ -607,9 +693,16 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
     if total_pages == 0:
         raise ValueError("Uploaded PDF has 0 pages.")
 
+    book_id = os.path.basename(os.path.abspath(out_dir)) if out_dir else ""
+    figures_dir = os.path.join(out_dir, "figures") if out_dir else ""
+    fig_url_prefix = f"/api/books/{book_id}/figures" if book_id.startswith("book_") else "figures"
+
     meta = doc.metadata or {}
     raw_title = clean_whitespace(meta.get("title") or "")
     author = clean_whitespace(meta.get("author") or "")
+    subtitle_detected = ""
+    publisher_detected = ""
+    detected_source_url = ""
     pub_date = ""
     cdate = meta.get("creationDate") or ""
     m_yr = re.search(r"(19|20)\d{2}", cdate)
@@ -621,7 +714,6 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
     chapter_ranges = []
 
     if toc:
-        # Prefer level-1 entries unless level-1 is only 1-2 "Parts" and level-2 has chapters
         lvl1 = [t for t in toc if t[0] == 1 and 1 <= t[2] <= total_pages]
         lvl2 = [t for t in toc if t[0] == 2 and 1 <= t[2] <= total_pages]
         chosen = lvl1 if len(lvl1) >= 3 or not lvl2 else [t for t in toc if t[0] in (1, 2) and 1 <= t[2] <= total_pages]
@@ -638,7 +730,6 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
             if SKIP_TOC_PATTERNS.search(t_clean):
                 continue
             if filtered and filtered[-1][1] == pg:
-                # Merge duplicate page starts
                 filtered[-1] = (f"{filtered[-1][0]} — {t_clean}", pg)
             else:
                 filtered.append((t_clean, pg))
@@ -650,7 +741,7 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
             end_pg = max(start_pg, min(next_pg, notes_start_page - 1))
             chapter_ranges.append((t_clean, start_pg, end_pg))
 
-    # Fallback 2: Scan pages for prominent "Chapter X" / large-font headings
+    # Fallback 2: Scan pages for prominent "Chapter X" headings
     if not chapter_ranges:
         detected = []
         heading_re = re.compile(
@@ -659,7 +750,6 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
         )
         for pno in range(total_pages):
             page = doc[pno]
-            text_top = clean_whitespace(page.get_text("text")[:450])
             first_lines = [clean_whitespace(ln) for ln in page.get_text("text").splitlines()[:6] if clean_whitespace(ln)]
             for idx_ln, ln in enumerate(first_lines[:3]):
                 m = heading_re.match(ln)
@@ -678,9 +768,9 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
                 end_pg = detected[i + 1][1] - 1 if i + 1 < len(detected) else total_pages
                 chapter_ranges.append((t_clean, start_pg, max(start_pg, end_pg)))
 
-    # Fallback 3: Chunk by ~14 pages (or single chapter if <= 16 pages)
+    # Fallback 3: Chunk by ~14 pages (or single chapter if <= 18 pages)
     if not chapter_ranges:
-        if total_pages <= 16:
+        if total_pages <= 18:
             chapter_ranges = [(raw_title or "Complete Text", 1, total_pages)]
         else:
             chunk = 14
@@ -690,61 +780,230 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
                 chapter_ranges.append((f"Part {part_num} (pp. {start_pg}–{end_pg})", start_pg, end_pg))
                 part_num += 1
 
-    # Extract rich paragraphs per chapter range
+            if not raw_title:
+                # Re-check with proper span concatenation
+                pass
+
+    # Detect page 1 title size cleanly with joined spans
+    if not meta.get("title"):
+        try:
+            p0 = doc[0].get_text("dict")
+            best = ("", 0.0)
+            for b in p0.get("blocks", []):
+                if b.get("type") != 0 or b["bbox"][1] < 32:
+                    continue
+                t = clean_whitespace(" ".join("".join(sp.get("text", "") for sp in ln.get("spans", [])) for ln in b.get("lines", [])))
+                sz = max((sp.get("size", 0.0) for ln in b.get("lines", []) for sp in ln.get("spans", [])), default=0.0)
+                if 2 <= len(t) <= 140 and sz > best[1]:
+                    best = (t, sz)
+            if best[0]:
+                raw_title = best[0]
+                if len(chapter_ranges) == 1:
+                    chapter_ranges[0] = (raw_title, chapter_ranges[0][1], chapter_ranges[0][2])
+        except Exception:
+            pass
+
     chapters = []
+    hit_article_end = False
+    max_content_page = 1
+
     for idx, (ch_raw_title, start_pg, end_pg) in enumerate(chapter_ranges):
+        if hit_article_end:
+            break
         paragraphs = []
         ch_notes = []
-        carry_para = None  # {"type": "p"|"blockquote", "html": str, "page": int}
+        carry_para = None  # {"type": "p"|"blockquote", "html": str, "page": int, "by1": float, "pg": int}
+        ch_last_page = start_pg
 
         for pg_1 in range(start_pg, end_pg + 1):
+            if hit_article_end:
+                break
             page = doc[pg_1 - 1]
             rect = page.rect
             page_h = rect.height or 792.0
             page_w = rect.width or 612.0
             pdict = page.get_text("dict")
-            blocks = [b for b in pdict.get("blocks", []) if b.get("type") == 0]
-            if not blocks:
-                continue
+            raw_blocks = [b for b in pdict.get("blocks", []) if b.get("type") == 0]
 
-            # Estimate typical left margin & body font size on this page
+            # Collect clickable external links on this page
+            page_links = []
+            for lnk in page.get_links() or []:
+                uri = (lnk.get("uri") or "").strip()
+                from_rect = lnk.get("from")
+                if uri.startswith(("http://", "https://")) and from_rect is not None:
+                    if "substack.com/@" in uri or "substackcdn.com/image/" in uri:
+                        continue
+                    page_links.append((from_rect, uri))
+
+            # Harvest sourceUrl from Print-to-PDF running footers before filtering margin chrome
+            for b in raw_blocks:
+                bx0, by0, bx1, by1 = b["bbox"]
+                if by0 > page_h * 0.93 or by1 > page_h * 0.948:
+                    ftxt = clean_whitespace(
+                        " ".join("".join(sp.get("text", "") for sp in ln.get("spans", [])) for ln in b.get("lines", []))
+                    )
+                    if not detected_source_url:
+                        m_url = re.search(r"https?://[^\s<>\"']+", ftxt)
+                        if m_url:
+                            candidate = m_url.group(0).rstrip(".,;)")
+                            detected_source_url = candidate
+                            try:
+                                host = re.sub(r"^www\.", "", candidate.split("/")[2]).lower()
+                                if "semianalysis" in host:
+                                    publisher_detected = "SEMIANALYSIS"
+                                elif not publisher_detected:
+                                    publisher_detected = host.split(".")[0].upper()
+                            except Exception:
+                                pass
+
+            # Filter out top/bottom running headers & footers, then sort visually by (y0, x0)
+            blocks = []
+            for b in raw_blocks:
+                bx0, by0, bx1, by1 = b["bbox"]
+                if by0 < page_h * 0.048 or by0 > page_h * 0.935 or by1 > page_h * 0.952:
+                    continue
+                blocks.append(b)
+            blocks.sort(key=lambda b: (round(b["bbox"][1], 1), round(b["bbox"][0], 1)))
+
+            # Estimate typical left margin, median font size, and line height on this page
             x0_samples = []
             size_samples = []
+            lh_samples = []
             for b in blocks:
-                y0, y1 = b["bbox"][1], b["bbox"][3]
-                if y0 < page_h * 0.065 or y1 > page_h * 0.935:
-                    continue
                 for ln in b.get("lines", []):
                     x0_samples.append(ln["bbox"][0])
+                    lh = ln["bbox"][3] - ln["bbox"][1]
+                    if 8 <= lh <= 34:
+                        lh_samples.append(lh)
                     for sp in ln.get("spans", []):
                         if sp.get("text", "").strip():
                             size_samples.append(sp.get("size", 11.0))
 
-            base_x0 = min(x0_samples) if x0_samples else page_w * 0.1
-            median_size = sorted(size_samples)[len(size_samples) // 2] if size_samples else 11.0
-            folio_inserted_for_page = False
+            base_x0 = min(x0_samples) if x0_samples else page_w * 0.075
+            median_size = sorted(size_samples)[len(size_samples) // 2] if size_samples else 11.5
+            median_lh = sorted(lh_samples)[len(lh_samples) // 2] if lh_samples else 18.0
 
+            # Collect valid inline figures on this page (excluding small icons/avatars)
+            page_figures = []
+            if figures_dir:
+                seen_fig_keys = set()
+                fig_seq = 0
+                for im in page.get_image_info(xrefs=True) or []:
+                    xref = int(im.get("xref") or 0)
+                    bx = im.get("bbox") or (0, 0, 0, 0)
+                    bw = bx[2] - bx[0]
+                    bh = bx[3] - bx[1]
+                    iw = int(im.get("width") or 0)
+                    ih = int(im.get("height") or 0)
+                    if xref <= 0 or bw < 150 or bh < 65 or iw < 260 or ih < 110:
+                        continue
+                    if bx[1] < page_h * 0.04 or bx[1] > page_h * 0.93:
+                        continue
+                    dedup_key = (xref, int(round(bx[1] / 8.0)))
+                    if dedup_key in seen_fig_keys:
+                        continue
+                    seen_fig_keys.add(dedup_key)
+                    fig_seq += 1
+                    page_figures.append({
+                        "kind": "figure",
+                        "y0": bx[1],
+                        "x0": bx[0],
+                        "y1": bx[3],
+                        "x1": bx[2],
+                        "xref": xref,
+                        "seq": fig_seq,
+                    })
+                page_figures.sort(key=lambda f: (round(f["y0"], 1), round(f["x0"], 1)))
+
+            # Build unified visual-order stream of text blocks + figures on this page
+            parsed_text_items = []
+            prose_started_on_page1 = len(paragraphs) > 0 or carry_para is not None
             for b in blocks:
                 bx0, by0, bx1, by1 = b["bbox"]
-                # Skip running header / page number footer
                 raw_block_txt = clean_whitespace(
-                    " ".join(sp.get("text", "") for ln in b.get("lines", []) for sp in ln.get("spans", []))
+                    " ".join("".join(sp.get("text", "") for sp in ln.get("spans", [])) for ln in b.get("lines", []))
                 )
                 if not raw_block_txt:
                     continue
-                if (by0 < page_h * 0.068 or by1 > page_h * 0.932) and len(raw_block_txt) < 85:
+                if PDF_PRINT_HEADER_RE.search(raw_block_txt):
                     continue
                 if re.fullmatch(r"[0-9ivxlcdmIVXLCDM]+", raw_block_txt):
                     continue
 
-                # Build formatted lines from spans
+                # Check end-of-article cutoff (Substack comments, recommendations, legal footer)
+                if PDF_TAIL_CUTOFF_RE.search(raw_block_txt) and (pg_1 >= 2 or prose_started_on_page1):
+                    hit_article_end = True
+                    # Discard any figures situated at or below the cutoff y0 on this page
+                    page_figures = [fg for fg in page_figures if fg["y1"] <= by0]
+                    break
+
+                # Opening page masthead & social bar cleanup before first prose paragraph
+                if pg_1 == start_pg and not prose_started_on_page1 and by0 < page_h * 0.36:
+                    max_sz_top = max(
+                        (sp.get("size", median_size) for ln in b.get("lines", []) for sp in ln.get("spans", [])),
+                        default=median_size,
+                    )
+                    # Skip main article title block on page 1
+                    if max_sz_top >= median_size * 1.45 or (
+                        raw_title and raw_block_txt.lower().startswith(raw_title.lower()[:24])
+                    ):
+                        continue
+                    # Capture deck / subtitle directly below title
+                    if (
+                        not subtitle_detected
+                        and by0 < page_h * 0.24
+                        and len(raw_block_txt) <= 180
+                        and not raw_block_txt.endswith(".")
+                        and not PDF_DATE_BYLINE_RE.match(raw_block_txt)
+                        and not PDF_SOCIAL_WIDGET_RE.match(raw_block_txt)
+                        and not re.fullmatch(r"[A-Z][A-Z\s,.'&\-]+", raw_block_txt)
+                    ):
+                        subtitle_detected = raw_block_txt
+                        continue
+                    # Capture all-caps author byline
+                    if (
+                        re.fullmatch(r"[A-Z][A-Z\s,.'&\-]{5,95}", raw_block_txt)
+                        and not PDF_DATE_BYLINE_RE.match(raw_block_txt)
+                        and not PDF_SOCIAL_WIDGET_RE.match(raw_block_txt)
+                    ):
+                        if not author or author == "Uploaded Edition":
+                            author = re.sub(r",\s*,+", ",", raw_block_txt.title().replace(" And ", " & "))
+                        continue
+                    # Capture date / PAID badge line
+                    m_dt = PDF_DATE_BYLINE_RE.match(raw_block_txt)
+                    if m_dt:
+                        pub_date = m_dt.group(1).upper()
+                        continue
+                    # Skip social like/comment/share counters
+                    if PDF_SOCIAL_WIDGET_RE.match(raw_block_txt):
+                        continue
+
+                if PDF_SOCIAL_WIDGET_RE.match(raw_block_txt) and len(raw_block_txt) <= 24:
+                    continue
+
+                # Format spans + inline hyperlinks
                 line_htmls = []
                 max_span_size = 0.0
-                first_line_x0 = bx0
-                for l_idx, ln in enumerate(b.get("lines", [])):
-                    if l_idx == 0:
-                        first_line_x0 = ln["bbox"][0]
+                for ln in b.get("lines", []):
                     sp_parts = []
+                    cur_link_uri = ""
+                    link_buf = []
+
+                    def flush_link():
+                        nonlocal cur_link_uri, link_buf
+                        if not link_buf:
+                            return
+                        inner_h = "".join(link_buf)
+                        if cur_link_uri:
+                            safe_u = html.escape(cur_link_uri, quote=True)
+                            sp_parts.append(
+                                f'<a href="{safe_u}" target="_blank" rel="noopener noreferrer" class="prose-link">{inner_h}</a>'
+                            )
+                        else:
+                            sp_parts.append(inner_h)
+                        cur_link_uri = ""
+                        link_buf = []
+
                     for sp in ln.get("spans", []):
                         txt = sp.get("text", "")
                         if not txt:
@@ -755,12 +1014,6 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
                         font_lower = (sp.get("font") or "").lower()
                         escaped = html.escape(txt)
 
-                        # Superscript note reference inside prose
-                        is_super = (flags & 1) or (sz < median_size * 0.76 and txt.strip().isdigit())
-                        if is_super and txt.strip().isdigit() and len(txt.strip()) <= 3:
-                            sp_parts.append(escaped)
-                            continue
-
                         is_italic = bool(flags & 2) or "italic" in font_lower or "oblique" in font_lower
                         is_bold = bool(flags & 16) or "bold" in font_lower
                         if is_bold and is_italic:
@@ -769,8 +1022,14 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
                             escaped = f"<em>{escaped}</em>"
                         elif is_bold and sz <= median_size * 1.15:
                             escaped = f"<strong>{escaped}</strong>"
-                        sp_parts.append(escaped)
 
+                        span_uri = _find_link_for_span_bbox(sp.get("bbox", b["bbox"]), page_links) if txt.strip() else cur_link_uri
+                        if span_uri != cur_link_uri:
+                            flush_link()
+                            cur_link_uri = span_uri
+                        link_buf.append(escaped)
+
+                    flush_link()
                     ln_joined = "".join(sp_parts).strip()
                     if ln_joined:
                         line_htmls.append(ln_joined)
@@ -778,7 +1037,6 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
                 if not line_htmls:
                     continue
 
-                # Join soft-wrapped lines, healing end-of-line hyphenation
                 merged = line_htmls[0]
                 for nxt in line_htmls[1:]:
                     if merged.endswith("-") and nxt and nxt[0].islower():
@@ -790,19 +1048,112 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
                 if not plain_merged:
                     continue
 
-                # Skip duplicate chapter title on opening page of chapter
-                if pg_1 == start_pg and len(paragraphs) == 0 and len(plain_merged) < 120:
-                    if plain_merged.lower() in ch_raw_title.lower() or re.match(r"^(chapter|part)\s+[0-9ivxlcdm]+\b", plain_merged, re.I):
-                        if len(plain_merged.split()) <= 14:
-                            continue
+                prose_started_on_page1 = True
+                parsed_text_items.append({
+                    "kind": "text",
+                    "y0": by0,
+                    "x0": bx0,
+                    "y1": by1,
+                    "x1": bx1,
+                    "html": merged,
+                    "plain": plain_merged,
+                    "max_size": max_span_size,
+                })
 
-                # Detect subheading vs blockquote vs normal paragraph
+            # Attach figure captions directly below each figure before merging
+            consumed_text_indices = set()
+            materialized_figures = []
+            for fg in page_figures:
+                fname, fw, fh = _save_pdf_xref_image(
+                    doc, fg["xref"], figures_dir, f"fig_p{pg_1}_{fg['seq']}"
+                )
+                if not fname:
+                    continue
+                caption_txt = ""
+                for t_idx, ti in enumerate(parsed_text_items):
+                    if t_idx in consumed_text_indices:
+                        continue
+                    gap = ti["y0"] - fg["y1"]
+                    if -4 <= gap <= 28 and len(ti["plain"]) <= 185:
+                        if ti["x0"] > base_x0 + 22 or PDF_CAPTION_PREFIX_RE.match(ti["plain"]):
+                            caption_txt = ti["plain"]
+                            consumed_text_indices.add(t_idx)
+                            break
+                materialized_figures.append({
+                    "kind": "figure",
+                    "y0": fg["y0"],
+                    "x0": fg["x0"],
+                    "y1": fg["y1"],
+                    "src": f"{fig_url_prefix}/{fname}",
+                    "caption": caption_txt,
+                    "width": fw,
+                    "height": fh,
+                    "page": pg_1,
+                })
+
+            remaining_texts = [
+                ti for idx_t, ti in enumerate(parsed_text_items) if idx_t not in consumed_text_indices
+            ]
+            combined_stream = sorted(
+                remaining_texts + materialized_figures,
+                key=lambda item: (round(item["y0"], 1), round(item["x0"], 1)),
+            )
+
+            # If a previous page ended mid-sentence AND this page starts with a top floating figure
+            # followed immediately by the lowercase sentence continuation, let the sentence finish first!
+            if (
+                carry_para
+                and len(combined_stream) >= 2
+                and combined_stream[0]["kind"] == "figure"
+                and combined_stream[1]["kind"] == "text"
+                and not re.search(r'[.!?”"\')\]—:]$', strip_tags(carry_para["html"]))
+                and combined_stream[1]["plain"][0].islower()
+            ):
+                combined_stream[0], combined_stream[1] = combined_stream[1], combined_stream[0]
+
+            if combined_stream:
+                ch_last_page = max(ch_last_page, pg_1)
+                max_content_page = max(max_content_page, pg_1)
+
+            folio_inserted_for_page = False
+
+            for item in combined_stream:
+                if item["kind"] == "figure":
+                    if carry_para:
+                        paragraphs.append({
+                            "type": carry_para["type"],
+                            "html": carry_para["html"],
+                            "page": carry_para["page"],
+                        })
+                        carry_para = None
+                    paragraphs.append({
+                        "type": "figure",
+                        "src": item["src"],
+                        "caption": item["caption"],
+                        "width": item["width"],
+                        "height": item["height"],
+                        "html": html.escape(item["caption"] or ""),
+                        "page": pg_1,
+                    })
+                    continue
+
+                plain_merged = item["plain"]
+                merged = item["html"]
+                max_span_size = item["max_size"]
+                bx0, by0, by1 = item["x0"], item["y0"], item["y1"]
+
                 is_subhead = (
-                    max_span_size >= median_size * 1.18
-                    and len(plain_merged) < 110
+                    max_span_size >= median_size * 1.13
+                    and len(plain_merged) < 130
                     and not plain_merged.endswith(".")
                 )
-                is_blockquote = (not is_subhead) and (bx0 > base_x0 + 18) and (median_size - max_span_size >= -0.5)
+                is_bullet = bool(re.match(r"^[-•▪◦]\s+", plain_merged))
+                is_blockquote = (
+                    not is_subhead
+                    and not is_bullet
+                    and (bx0 > base_x0 + 20)
+                    and (median_size - max_span_size >= -0.5)
+                )
 
                 folio_tag = ""
                 if not folio_inserted_for_page:
@@ -811,7 +1162,11 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
 
                 if is_subhead:
                     if carry_para:
-                        paragraphs.append(carry_para)
+                        paragraphs.append({
+                            "type": carry_para["type"],
+                            "html": carry_para["html"],
+                            "page": carry_para["page"],
+                        })
                         carry_para = None
                     paragraphs.append({
                         "type": "subhead",
@@ -822,27 +1177,55 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
 
                 b_type = "blockquote" if is_blockquote else "p"
 
-                # Merge paragraph broken across page boundary if previous paragraph didn't end sentence
-                if (
-                    carry_para
+                # Merge soft-wrapped lines within the same paragraph on the same page,
+                # OR across page boundaries when the previous page ended mid-sentence!
+                same_page_soft_wrap = (
+                    carry_para is not None
+                    and carry_para["pg"] == pg_1
                     and carry_para["type"] == b_type
-                    and not re.search(r'[.!?”"\')\]—]$', strip_tags(carry_para["html"]))
+                    and not is_bullet
+                    and 0 <= (by0 - carry_para["by1"]) <= max(11.5, median_lh * 0.55)
+                )
+                cross_page_continuation = (
+                    carry_para is not None
+                    and carry_para["pg"] != pg_1
+                    and carry_para["type"] == b_type
+                    and not is_bullet
+                    and not re.search(r'[.!?”"\')\]—:]$', strip_tags(carry_para["html"]))
                     and plain_merged[0].islower()
-                ):
-                    carry_para["html"] = carry_para["html"] + " " + folio_tag + merged
+                )
+
+                if same_page_soft_wrap or cross_page_continuation:
+                    joiner = "" if carry_para["html"].endswith("-") and plain_merged[0].islower() else " "
+                    if joiner == "":
+                        carry_para["html"] = carry_para["html"][:-1] + folio_tag + merged
+                    else:
+                        carry_para["html"] = carry_para["html"] + " " + folio_tag + merged
+                    carry_para["by1"] = by1
+                    carry_para["pg"] = pg_1
                 else:
                     if carry_para:
-                        paragraphs.append(carry_para)
+                        paragraphs.append({
+                            "type": carry_para["type"],
+                            "html": carry_para["html"],
+                            "page": carry_para["page"],
+                        })
                     carry_para = {
                         "type": b_type,
                         "html": folio_tag + merged,
                         "page": pg_1,
+                        "by1": by1,
+                        "pg": pg_1,
                     }
 
         if carry_para:
-            paragraphs.append(carry_para)
+            paragraphs.append({
+                "type": carry_para["type"],
+                "html": carry_para["html"],
+                "page": carry_para["page"],
+            })
 
-        word_cnt = sum(count_words(p["html"]) for p in paragraphs)
+        word_cnt = sum(count_words(p.get("html", "")) for p in paragraphs if p.get("type") != "figure")
         if word_cnt < 25 and len(chapter_ranges) > 1:
             continue
 
@@ -865,46 +1248,34 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
             "title": clean_title or ch_label,
             "shortTitle": make_short_title(clean_title, ch_label),
             "folioStart": start_pg,
-            "folioEnd": end_pg,
+            "folioEnd": ch_last_page,
             "wordCount": word_cnt,
             "paragraphs": paragraphs,
             "endnotes": ch_notes,
         })
 
     if not raw_title:
-        # Try extracting title from page 1 largest text
-        try:
-            p0 = doc[0].get_text("dict")
-            best = ("", 0.0)
-            for b in p0.get("blocks", []):
-                if b.get("type") != 0:
-                    continue
-                t = clean_whitespace(" ".join(sp.get("text", "") for ln in b.get("lines", []) for sp in ln.get("spans", [])))
-                sz = max((sp.get("size", 0.0) for ln in b.get("lines", []) for sp in ln.get("spans", [])), default=0.0)
-                if 2 <= len(t) <= 120 and sz > best[1]:
-                    best = (t, sz)
-            raw_title = best[0]
-        except Exception:
-            pass
-
-    if not raw_title:
         raw_title = os.path.splitext(os.path.basename(pdf_path))[0].replace("_", " ").replace("-", " ").title()
 
-    subtitle = ""
+    subtitle = subtitle_detected
     if ":" in raw_title:
         parts = raw_title.split(":", 1)
         raw_title = parts[0].strip()
-        subtitle = parts[1].strip()
+        if not subtitle:
+            subtitle = parts[1].strip()
+        else:
+            raw_title = f"{parts[0].strip()}: {parts[1].strip()}"
 
     doc.close()
     return {
         "sourceFormat": "pdf",
+        "sourceUrl": detected_source_url,
         "title": raw_title,
         "subtitle": subtitle,
         "author": author or "Uploaded Edition",
-        "publisherMeta": "PDF DIGITAL EDITION",
+        "publisherMeta": publisher_detected or "PDF DIGITAL EDITION",
         "pubDate": pub_date,
-        "totalPages": total_pages,
+        "totalPages": max_content_page if hit_article_end else total_pages,
         "wordCount": sum(c["wordCount"] for c in chapters),
         "chapters": chapters,
     }
@@ -1376,6 +1747,7 @@ def main():
 
     in_path = sys.argv[1]
     out_path = sys.argv[2]
+    out_dir = os.path.dirname(os.path.abspath(out_path))
     ext = os.path.splitext(in_path)[1].lower()
 
     if ext == ".epub":
@@ -1383,12 +1755,12 @@ def main():
             result = extract_epub_native(in_path)
         except Exception as epub_err:
             if fitz is not None:
-                result = extract_pdf_with_fitz(in_path)
+                result = extract_pdf_with_fitz(in_path, out_dir=out_dir)
                 result["sourceFormat"] = "epub"
             else:
                 raise epub_err
     elif ext == ".pdf":
-        result = extract_pdf_with_fitz(in_path)
+        result = extract_pdf_with_fitz(in_path, out_dir=out_dir)
     elif ext in (".html", ".htm", ".xhtml"):
         result = extract_html_document(in_path)
     else:

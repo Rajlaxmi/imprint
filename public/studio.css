@@ -93,6 +93,44 @@ html[data-width="wide"] { --measure: 47rem; }
   }
 }
 
+/* Inline Extracted PDF / Article Figures & Data Charts */
+.pdf-figure {
+  margin: 1.55rem 0 1.7rem;
+  padding: 0.7rem;
+  background: #fff;
+  border: 1px solid var(--rule, rgba(28, 25, 21, 0.14));
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 10px rgba(28, 25, 21, 0.04);
+}
+
+html[data-theme="night"] .pdf-figure {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.pdf-figure__link {
+  display: block;
+  text-decoration: none;
+  cursor: zoom-in;
+}
+
+.pdf-figure__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.3rem;
+}
+
+.pdf-figure__caption {
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed rgba(28, 25, 21, 0.12);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--ink-muted, #5c5549);
+  text-align: center;
+}
+
 /* Permanent Save & Cloud Sync Modal */
 .save-sync-modal {
   max-width: 31rem;

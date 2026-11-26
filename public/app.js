@@ -1499,6 +1499,19 @@
             const proseHtml = slice
               .map((p, relIdx) => {
                 const absParaIdx = pStartIdx + relIdx;
+                if (p.type === "figure" && p.src) {
+                  const capHtml = p.caption
+                    ? `<figcaption class="pdf-figure__caption">${escapeHTML(p.caption)}</figcaption>`
+                    : "";
+                  return `<figure class="pdf-figure" data-para-idx="${absParaIdx}">
+                    <a href="${escapeHTML(p.src)}" target="_blank" rel="noopener noreferrer" class="pdf-figure__link" title="Click to inspect full-resolution figure">
+                      <img src="${escapeHTML(p.src)}" alt="${escapeHTML(
+                    p.caption || `Figure on page ${p.page || 1}`
+                  )}" class="pdf-figure__img" loading="lazy" />
+                    </a>
+                    ${capHtml}
+                  </figure>`;
+                }
                 if (p.type === "subhead") {
                   return `<h2 class="section-subhead" data-para-idx="${absParaIdx}">${p.html}</h2>`;
                 }

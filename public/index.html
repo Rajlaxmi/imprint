@@ -6,8 +6,8 @@
   <title>Imprint | Personal Editorial Library</title>
   <meta name="description" content="Imprint — Turn any EPUB, PDF, or web link into an interactive editorial edition with full prose, 16:9 Story Comics, animated SVG diagrams, margin notes, endnotes, and Gemini 4 Neon AI study chat." />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous" />
-  <link rel="stylesheet" href="styles.css?v=16" />
-  <link rel="stylesheet" href="studio.css?v=16" />
+  <link rel="stylesheet" href="styles.css?v=17" />
+  <link rel="stylesheet" href="studio.css?v=17" />
 </head>
 <body>
   <a class="skip-link" href="#chapter-text">Skip to chapter text</a>
@@ -409,11 +409,11 @@
 
       <!-- Compact Drag & Drop Upload + Paste Link Box -->
       <div class="upload-dropzone" id="uploadDropzone">
-        <input type="file" id="bookFileInput" accept=".epub,.pdf,application/epub+zip,application/pdf" hidden />
+        <input type="file" id="bookFileInput" accept=".epub,.pdf,.html,.htm,application/epub+zip,application/pdf,text/html" hidden />
         <div class="upload-dropzone__main">
           <div class="upload-dropzone__icon" aria-hidden="true">EPUB / PDF</div>
           <div class="upload-dropzone__copy">
-            <p class="upload-dropzone__headline">Drop an <strong>.epub</strong> or <strong>.pdf</strong>, or <button type="button" class="upload-browse-link" id="uploadBrowseBtn">choose file</button></p>
+            <p class="upload-dropzone__headline">Drop an <strong>.epub</strong>, <strong>.pdf</strong>, or saved <strong>.html</strong>, or <button type="button" class="upload-browse-link" id="uploadBrowseBtn">choose file</button></p>
             <p class="upload-dropzone__sub">Full actual prose immediately · Story Comics &amp; SVG diagrams in background.</p>
           </div>
         </div>
@@ -502,7 +502,7 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
-  <script src="static-engine.js?v=16"></script>
-  <script src="app.js?v=16"></script>
+  <script src="static-engine.js?v=17"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>
