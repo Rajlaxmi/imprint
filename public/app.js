@@ -282,8 +282,139 @@
       .replace(/"/g, "&quot;");
   }
 
+  const LATEX_SYMBOL_MAP = {
+    "\\neq": "≠",
+    "\\ne": "≠",
+    "\\leq": "≤",
+    "\\le": "≤",
+    "\\geq": "≥",
+    "\\ge": "≥",
+    "\\approx": "≈",
+    "\\equiv": "≡",
+    "\\sim": "∼",
+    "\\simeq": "≃",
+    "\\cong": "≅",
+    "\\times": "×",
+    "\\cdot": "·",
+    "\\pm": "±",
+    "\\mp": "∓",
+    "\\infty": "∞",
+    "\\partial": "∂",
+    "\\nabla": "∇",
+    "\\forall": "∀",
+    "\\exists": "∃",
+    "\\in": "∈",
+    "\\notin": "∉",
+    "\\subset": "⊂",
+    "\\subseteq": "⊆",
+    "\\subsetneq": "⊊",
+    "\\supset": "⊃",
+    "\\supseteq": "⊇",
+    "\\cup": "∪",
+    "\\cap": "∩",
+    "\\to": "→",
+    "\\rightarrow": "→",
+    "\\leftarrow": "←",
+    "\\Rightarrow": "⇒",
+    "\\Leftrightarrow": "⇔",
+    "\\iff": "⟺",
+    "\\lceil": "⌈",
+    "\\rceil": "⌉",
+    "\\lfloor": "⌊",
+    "\\rfloor": "⌋",
+    "\\alpha": "α",
+    "\\beta": "β",
+    "\\gamma": "γ",
+    "\\delta": "δ",
+    "\\epsilon": "ε",
+    "\\varepsilon": "ε",
+    "\\zeta": "ζ",
+    "\\eta": "η",
+    "\\theta": "θ",
+    "\\lambda": "λ",
+    "\\mu": "μ",
+    "\\nu": "ν",
+    "\\xi": "ξ",
+    "\\pi": "π",
+    "\\rho": "ρ",
+    "\\sigma": "σ",
+    "\\tau": "τ",
+    "\\phi": "φ",
+    "\\varphi": "φ",
+    "\\chi": "χ",
+    "\\psi": "ψ",
+    "\\omega": "ω",
+    "\\Gamma": "Γ",
+    "\\Delta": "Δ",
+    "\\Theta": "Θ",
+    "\\Lambda": "Λ",
+    "\\Pi": "Π",
+    "\\Sigma": "Σ",
+    "\\Phi": "Φ",
+    "\\Psi": "Ψ",
+    "\\Omega": "Ω",
+    "\\log": "log",
+    "\\ln": "ln",
+    "\\exp": "exp",
+    "\\sin": "sin",
+    "\\cos": "cos",
+    "\\max": "max",
+    "\\min": "min",
+    "\\poly": "poly",
+  };
+
+  function fallbackLatexToHTML(tex) {
+    let s = escapeHTML(String(tex || "").trim());
+    s = s.replace(/\\(?:mathrm|mathbf|mathsf|mathcal|mathbb|operatorname|text)\{([^{}]*)\}/g, "$1");
+    s = s.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, "($1)/($2)");
+    s = s.replace(/\\sqrt\{([^{}]*)\}/g, "√($1)");
+    for (const [k, v] of Object.entries(LATEX_SYMBOL_MAP)) {
+      s = s.split(k).join(v);
+    }
+    s = s
+      .replace(/\^\{([^{}]+)\}/g, "<sup>$1</sup>")
+      .replace(/\^([A-Za-z0-9+-])/g, "<sup>$1</sup>")
+      .replace(/_\{([^{}]+)\}/g, "<sub>$1</sub>")
+      .replace(/_([A-Za-z0-9+-])/g, "<sub>$1</sub>")
+      .replace(/\\([{}])/g, "$1")
+      .replace(/[{}]/g, "");
+    return `<span class="math-fallback">${s}</span>`;
+  }
+
+  function renderLatexToHTML(tex, displayMode = false) {
+    const cleanTex = String(tex || "").trim();
+    if (!cleanTex) return "";
+    if (window.katex && typeof window.katex.renderToString === "function") {
+      try {
+        return window.katex.renderToString(cleanTex, {
+          displayMode,
+          throwOnError: false,
+          strict: "ignore",
+        });
+      } catch (_) {
+        // Fall through to clean HTML fallback
+      }
+    }
+    const fb = fallbackLatexToHTML(cleanTex);
+    return displayMode ? `<div class="md-math-block">${fb}</div>` : fb;
+  }
+
+  function renderMathInHtmlSnippet(htmlStr) {
+    if (!htmlStr) return "";
+    let out = String(htmlStr);
+    out = out.replace(/\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]/g, (_, m1, m2) =>
+      renderLatexToHTML(m1 || m2, true)
+    );
+    out = out.replace(/\\\(([\s\S]+?)\\\)/g, (_, m1) => renderLatexToHTML(m1, false));
+    out = out.replace(/\$(?!\s)((?:\\.|[^$\\\n])+?)(?<!\s)\$/g, (full, inner) => {
+      if (/^\d[\d,.]*\s+[A-Za-z]/.test(inner)) return full;
+      return renderLatexToHTML(inner, false);
+    });
+    return out;
+  }
+
   function formatInlineMarkdown(escapedLine) {
-    // Extract [label](https://...) links first using placeholders so bare-URL pass won't double-wrap
+    // Use underscore-free, asterisk-free %%...%% tokens so italic/bold regexes never collide with tokens!
     const linkTokens = [];
     let withTokens = escapedLine.replace(
       /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
@@ -292,7 +423,7 @@
         linkTokens.push(
           `<a href="${url}" target="_blank" rel="noopener noreferrer" class="md-link">${label}</a>`
         );
-        return `@@MDLINK_${idx}@@`;
+        return `%%MDLINK${idx}%%`;
       }
     );
 
@@ -307,7 +438,7 @@
         linkTokens.push(
           `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="md-link">${cleanUrl}</a>`
         );
-        return `${prefix}@@MDLINK_${idx}@@${trailing}`;
+        return `${prefix}%%MDLINK${idx}%%${trailing}`;
       }
     );
 
@@ -319,13 +450,39 @@
       .replace(/(^|[^_])_([^_]+)_(?!_)/g, "$1<em>$2</em>");
 
     linkTokens.forEach((anchorHtml, idx) => {
-      formatted = formatted.replace(`@@MDLINK_${idx}@@`, anchorHtml);
+      formatted = formatted.split(`%%MDLINK${idx}%%`).join(anchorHtml);
     });
     return formatted;
   }
 
   function formatAiTextToHTML(raw) {
-    const lines = String(raw || "").replace(/\r\n/g, "\n").split("\n");
+    const protectedTokens = [];
+    const stashToken = (renderedHtml) => {
+      const idx = protectedTokens.length;
+      protectedTokens.push(renderedHtml);
+      return `%%PROT${idx}%%`;
+    };
+
+    // 1. Protect inline `code` spans first so literal $VARS inside code are untouched
+    let pre = String(raw || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/`([^`\n]+)`/g, (_, codeBody) => stashToken(`<code>${escapeHTML(codeBody)}</code>`));
+
+    // 2. Extract multi-line or single-line Display Math ($$...$$ and \[...\])
+    pre = pre.replace(/\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]/g, (_, m1, m2) => {
+      const htmlMath = `<div class="md-math-block">${renderLatexToHTML(m1 || m2, true)}</div>`;
+      return `\n${stashToken(htmlMath)}\n`;
+    });
+
+    // 3. Extract Inline Math (\(...\) and $...$) before Markdown escaping/emphasis
+    pre = pre.replace(/\\\(([\s\S]+?)\\\)/g, (_, m1) => stashToken(renderLatexToHTML(m1, false)));
+    pre = pre.replace(/\$(?!\s)((?:\\.|[^$\\\n])+?)(?<!\s)\$/g, (full, inner) => {
+      // Skip accidental currency spans like "$100 and $200"
+      if (/^\d[\d,.]*\s+[A-Za-z]/.test(inner)) return full;
+      return stashToken(renderLatexToHTML(inner, false));
+    });
+
+    const lines = pre.split("\n");
     const htmlBlocks = [];
     let paraLines = [];
     let listType = null;
@@ -358,6 +515,13 @@
         flushParagraph();
         flushList();
         flushQuote();
+        continue;
+      }
+      if (/^%%PROT\d+%%$/.test(trimmed)) {
+        flushParagraph();
+        flushList();
+        flushQuote();
+        htmlBlocks.push(trimmed);
         continue;
       }
       if (/^(-{3,}|\*{3,})$/.test(trimmed)) {
@@ -409,7 +573,12 @@
     flushParagraph();
     flushList();
     flushQuote();
-    return htmlBlocks.join("");
+
+    let finalHtml = htmlBlocks.join("");
+    protectedTokens.forEach((renderedHtml, idx) => {
+      finalHtml = finalHtml.split(`%%PROT${idx}%%`).join(renderedHtml);
+    });
+    return finalHtml;
   }
 
   /* ========================================================================
@@ -1342,7 +1511,7 @@
                       return `<li id="ch${ch.num}-note-${n.num}" data-note-uid="${escapeHTML(
                         n.uid || ""
                       )}"><span class="endnotes__body">${
-                        n.html || "<em>(Empty endnote)</em>"
+                        renderMathInHtmlSnippet(n.html) || "<em>(Empty endnote)</em>"
                       }</span> ${backHtml}</li>`;
                     }
                   )
@@ -1604,7 +1773,7 @@
         cloneLi.innerHTML = `
           <div class="rail-endnotes-item__row">
             <div class="rail-endnotes-item__body">
-              ${n.html || "<em>(Empty endnote)</em>"} ${backLinkHtml}
+              ${renderMathInHtmlSnippet(n.html) || "<em>(Empty endnote)</em>"} ${backLinkHtml}
             </div>
             <div class="rail-endnotes-item__tools">
               <button type="button" class="note-card__ghost-btn" data-edit-endnote="${num}" title="Edit endnote">Edit</button>

@@ -360,6 +360,33 @@ html[data-width="wide"] { --measure: 47rem; }
   color: var(--vermilion-deep);
 }
 
+/* KaTeX Math Rendering Inside AI Chat, Pinned Notes & Endnotes */
+.md-prose .katex,
+.rail-endnotes-list .katex,
+.endnotes__body .katex {
+  font-size: 1.04em;
+  line-height: 1.2;
+}
+
+.md-math-block {
+  margin: 0.52rem 0;
+  padding: 0.38rem 0.25rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
+
+.md-prose .katex-display {
+  margin: 0.25rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.math-fallback {
+  font-family: var(--font-serif);
+  font-style: italic;
+}
+
 /* Grounded Google Search Source Pills in AI Chat */
 .ai-msg__sources {
   display: flex;
