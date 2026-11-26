@@ -237,26 +237,33 @@
     return w.length > 5 ? w.slice(0, 5).join(" ") + "…" : clean;
   }
 
-  function serializeCleanInline(node) {
+  function serializeCleanInline(node, baseUrl) {
     if (node.nodeType === Node.TEXT_NODE) return escapeHtml(node.nodeValue || "");
     if (node.nodeType !== Node.ELEMENT_NODE) return "";
     const tag = node.tagName.toLowerCase();
     if (["script", "style", "svg", "nav"].includes(tag)) return "";
     if (tag === "br") return " ";
-    const inner = Array.from(node.childNodes).map(serializeCleanInline).join("");
+    const inner = Array.from(node.childNodes)
+      .map((n) => serializeCleanInline(n, baseUrl))
+      .join("");
     if (tag === "em" || tag === "i") return `<em>${inner}</em>`;
-    if (tag === "strong" || tag === "b") return `<strong>${inner}</strong>`;
+    if (tag === "strong" || tag === "b") return `<strong>${inner}</em>`.replace("</em>", "</strong>");
     if (tag === "sub" || tag === "sup" || tag === "code") return `<${tag}>${inner}</${tag}>`;
     if (tag === "a") {
-      const href = node.getAttribute("href") || "";
-      if (/^https?:\/\//i.test(href)) {
-        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="prose-link">${inner}</a>`;
+      const rawHref = (node.getAttribute("href") || "").trim();
+      if (rawHref && !rawHref.startsWith("#") && !/^javascript:/i.test(rawHref)) {
+        try {
+          const resolved = baseUrl ? new URL(rawHref, baseUrl).href : rawHref;
+          if (/^https?:\/\//i.test(resolved)) {
+            return `<a href="${escapeHtml(resolved)}" target="_blank" rel="noopener noreferrer" class="prose-link">${inner}</a>`;
+          }
+        } catch (_) {}
       }
     }
     return inner;
   }
 
-  function extractBlocksFromDOM(containerEl) {
+  function extractBlocksFromDOM(containerEl, baseUrl) {
     const blocks = [];
     let firstHeading = "";
 
@@ -273,10 +280,10 @@
             blocks.push({ type: "subhead", html: escapeHtml(txt) });
           }
         } else if (tag === "blockquote") {
-          const html = serializeCleanInline(child).replace(/\s+/g, " ").trim();
+          const html = serializeCleanInline(child, baseUrl).replace(/\s+/g, " ").trim();
           if (stripTags(html)) blocks.push({ type: "blockquote", html });
         } else if (tag === "p" || tag === "li") {
-          const html = serializeCleanInline(child).replace(/\s+/g, " ").trim();
+          const html = serializeCleanInline(child, baseUrl).replace(/\s+/g, " ").trim();
           if (stripTags(html)) blocks.push({ type: "p", html });
         } else {
           walk(child);
@@ -577,69 +584,20 @@
     };
   }
 
-  async function extractUrlInBrowser(rawUrl) {
-    let targetUrl = rawUrl.trim();
-    const u = new URL(targetUrl);
-    const gutenbergMatch = u.pathname.match(/^\/ebooks\/(\d+)\/?$/i);
-    if (u.hostname.endsWith("gutenberg.org") && gutenbergMatch) {
-      targetUrl = `https://www.gutenberg.org/cache/epub/${gutenbergMatch[1]}/pg${gutenbergMatch[1]}-images.html`;
-    }
-
-    // Try direct CORS fetch first, then fallback to AllOrigins public CORS proxy for static Pages mode
-    let resp = null;
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-      resp = await nativeFetch(targetUrl);
-      if (!resp.ok) resp = null;
-    } catch (_) {
-      resp = null;
+      return await nativeFetch(url, { ...options, signal: ctrl.signal });
+    } finally {
+      clearTimeout(timer);
     }
+  }
 
-    if (!resp) {
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-      resp = await nativeFetch(proxyUrl);
-      if (!resp.ok) {
-        throw new Error("Could not fetch URL from browser (CORS blocked or unreachable). Download the EPUB/PDF and drop it above, or run Imprint locally.");
-      }
-    }
-
-    const buf = await resp.arrayBuffer();
-    const bytes = new Uint8Array(buf.slice(0, 8));
-    if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
-      return extractPdfInBrowser(buf, u.pathname.split("/").pop() || "document.pdf");
-    }
-    if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
-      return extractEpubInBrowser(buf, u.pathname.split("/").pop() || "book.epub");
-    }
-
-    const htmlText = new TextDecoder("utf-8").decode(buf);
-    const doc = new DOMParser().parseFromString(htmlText, "text/html");
-
-    const ogTitle = doc.querySelector('meta[property="og:title"], meta[name="twitter:title"]')?.getAttribute("content") || "";
-    const siteName = doc.querySelector('meta[property="og:site_name"]')?.getAttribute("content") || u.hostname.replace(/^www\./, "");
-    const authorMeta = doc.querySelector('meta[name="author"], [rel="author"]')?.getAttribute("content") || doc.querySelector('[rel="author"]')?.textContent || siteName;
-    const postHeading = doc.querySelector(".entry-title, .post-title, .post h1, .post h2, article h1")?.textContent?.trim() || "";
-
-    // Prune non-article chrome (comments, sidebars, nav, share widgets, footers)
-    doc.querySelectorAll(
-      "script, style, nav, footer, aside, form, iframe, .comments, #comments, .commentlist, #respond, .sidebar, #sidebar, .widget, .sharedaddy, .really_simple_share, .robots-nocontent, .postmetadata, .entry-meta, .navigation, .post-navigation, #header"
-    ).forEach((el) => el.remove());
-
-    const mainEl =
-      doc.querySelector(".entry-content, .post-content, .article-content, .article-body, div.entry, [itemprop='articleBody'], article, .post, main") ||
-      doc.body;
-
-    const { firstHeading, blocks } = extractBlocksFromDOM(mainEl);
-    const cleanTitle = (postHeading || ogTitle || firstHeading || doc.title || "Web Article").replace(/\s+/g, " ").trim();
-    const filtered = blocks.filter((b) => {
-      const plain = stripTags(b.html);
-      return plain && !/^(this entry was posted|leave a reply|share this:)/i.test(plain) && plain.toLowerCase() !== cleanTitle.toLowerCase();
-    });
-
-    if (!filtered.length) throw new Error("No readable article text found at that URL.");
-
+  function buildWebEditionFromBlocks({ cleanTitle, author, siteName, pubDate, blocks }) {
     let page = 1;
     let wordsOnPage = 0;
-    const paragraphs = filtered.map((b, idx) => {
+    const paragraphs = blocks.map((b, idx) => {
       let html = b.html;
       wordsOnPage += countWords(html);
       if (idx === 0 || wordsOnPage >= 310) {
@@ -654,15 +612,16 @@
       return { type: b.type, html, page };
     });
 
+    const totalWords = paragraphs.reduce((s, p) => s + countWords(p.html), 0);
     return {
       sourceFormat: "web",
       title: cleanTitle,
       subtitle: "",
-      author: String(authorMeta || siteName).trim(),
-      publisherMeta: siteName.toUpperCase().slice(0, 28),
-      pubDate: "",
+      author: String(author || siteName).trim(),
+      publisherMeta: String(siteName || "WEB EDITION").toUpperCase().slice(0, 28),
+      pubDate: String(pubDate || "").slice(0, 10),
       totalPages: page,
-      wordCount: paragraphs.reduce((s, p) => s + countWords(p.html), 0),
+      wordCount: totalWords,
       chapters: [
         {
           slug: "chapter-1",
@@ -672,12 +631,217 @@
           shortTitle: makeShortTitle(cleanTitle, "Article"),
           folioStart: 1,
           folioEnd: page,
-          wordCount: paragraphs.reduce((s, p) => s + countWords(p.html), 0),
+          wordCount: totalWords,
           paragraphs,
           endnotes: [],
         },
       ],
     };
+  }
+
+  function parseHtmlIntoWebEdition(htmlText, u, fallbackMeta = {}) {
+    const baseUrl = fallbackMeta.finalUrl || u.href;
+    const doc = new DOMParser().parseFromString(htmlText, "text/html");
+
+    const ogTitle =
+      doc.querySelector('meta[property="og:title"], meta[name="twitter:title"]')?.getAttribute("content") || "";
+    const siteName =
+      doc.querySelector('meta[property="og:site_name"]')?.getAttribute("content") || u.hostname.replace(/^www\./, "");
+    const authorMeta =
+      doc.querySelector('meta[name="author"]')?.getAttribute("content") ||
+      doc.querySelector('[rel="author"], .author, .byline')?.textContent ||
+      fallbackMeta.author ||
+      siteName;
+    const postHeading =
+      doc.querySelector(".entry-title, .post-title, .post h1, .post h2, article h1, main h1")?.textContent?.trim() || "";
+
+    // Prune non-article chrome (comments, sidebars, nav, share widgets, footers)
+    doc
+      .querySelectorAll(
+        "script, style, nav, footer, aside, form, iframe, .comments, #comments, .commentlist, #respond, [id*='comment'], [class*='comment-'], .sidebar, #sidebar, .widget, .sharedaddy, .really_simple_share, .robots-nocontent, .postmetadata, .entry-meta, .navigation, .post-navigation, #header, #jp-post-flair, .jp-relatedposts"
+      )
+      .forEach((el) => el.remove());
+
+    const mainEl =
+      doc.querySelector(
+        ".entry-content, .post-content, .article-content, .article-body, div.entry, [itemprop='articleBody'], article, .post, main"
+      ) || doc.body;
+
+    const { firstHeading, blocks } = extractBlocksFromDOM(mainEl, baseUrl);
+    let rawTitle = (postHeading || ogTitle || firstHeading || fallbackMeta.title || doc.title || "Web Article")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (rawTitle.includes("»")) {
+      const parts = rawTitle.split("»").map((s) => s.trim()).filter(Boolean);
+      rawTitle = parts[parts.length - 1] || rawTitle;
+    }
+
+    const filtered = blocks.filter((b) => {
+      const plain = stripTags(b.html);
+      return (
+        plain &&
+        !/^(this entry was posted|leave a reply|share this:|posted in\s)/i.test(plain) &&
+        plain.toLowerCase() !== rawTitle.toLowerCase()
+      );
+    });
+
+    if (!filtered.length) return null;
+    return buildWebEditionFromBlocks({
+      cleanTitle: rawTitle,
+      author: String(authorMeta || siteName).replace(/\s+/g, " ").trim(),
+      siteName,
+      pubDate: fallbackMeta.publishedTime || "",
+      blocks: filtered,
+    });
+  }
+
+  function parseMarkdownIntoWebEdition(mdText, u, meta = {}) {
+    const siteName = u.hostname.replace(/^www\./, "");
+    let cleanTitle = String(meta.title || "Web Article").replace(/\s+/g, " ").trim();
+    if (cleanTitle.includes("»")) {
+      const parts = cleanTitle.split("»").map((s) => s.trim()).filter(Boolean);
+      cleanTitle = parts[parts.length - 1] || cleanTitle;
+    }
+
+    const chunks = String(mdText || "")
+      .replace(/\r\n/g, "\n")
+      .split(/\n\s*\n+/)
+      .map((c) => c.trim())
+      .filter(Boolean);
+
+    const blocks = [];
+    for (const chunk of chunks) {
+      if (/^!\[[^\]]*\]\([^)]+\)$/.test(chunk) || /^[-=_*]{3,}$/.test(chunk)) continue;
+      if (/^#{1,4}\s+/.test(chunk)) {
+        const hTxt = chunk.replace(/^#{1,4}\s+/, "").trim();
+        if (hTxt && hTxt.toLowerCase() !== cleanTitle.toLowerCase()) {
+          blocks.push({ type: "subhead", html: escapeHtml(hTxt) });
+        }
+        continue;
+      }
+      const isQuote = chunk.startsWith(">");
+      const rawLine = isQuote ? chunk.replace(/^>\s?/gm, "").trim() : chunk;
+      const html = escapeHtml(rawLine)
+        .replace(
+          /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+          '<a href="$2" target="_blank" rel="noopener noreferrer" class="prose-link">$1</a>'
+        )
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, "$1<em>$2</em>")
+        .replace(/`([^`]+)`/g, "<code>$1</code>")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (stripTags(html)) {
+        blocks.push({ type: isQuote ? "blockquote" : "p", html });
+      }
+    }
+
+    if (!blocks.length) return null;
+    return buildWebEditionFromBlocks({
+      cleanTitle,
+      author: meta.author || siteName,
+      siteName,
+      pubDate: meta.publishedTime || "",
+      blocks,
+    });
+  }
+
+  async function extractUrlInBrowser(rawUrl) {
+    let targetUrl = String(rawUrl || "").trim();
+    if (!targetUrl) throw new Error("Please enter a valid https:// URL.");
+    if (!/^https?:\/\//i.test(targetUrl)) targetUrl = `https://${targetUrl}`;
+
+    const u = new URL(targetUrl);
+    const gutenbergMatch = u.pathname.match(/^\/ebooks\/(\d+)\/?$/i);
+    if (u.hostname.endsWith("gutenberg.org") && gutenbergMatch) {
+      targetUrl = `https://www.gutenberg.org/cache/epub/${gutenbergMatch[1]}/pg${gutenbergMatch[1]}-images.html`;
+    }
+
+    // Tier 1: Try direct CORS fetch first (handles CORS-open HTML, .pdf, and .epub binaries)
+    try {
+      const directResp = await fetchWithTimeout(targetUrl, {}, 7000);
+      if (directResp.ok) {
+        const buf = await directResp.arrayBuffer();
+        const bytes = new Uint8Array(buf.slice(0, 8));
+        if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+          return extractPdfInBrowser(buf, u.pathname.split("/").pop() || "document.pdf");
+        }
+        if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
+          return extractEpubInBrowser(buf, u.pathname.split("/").pop() || "book.epub");
+        }
+        const htmlText = new TextDecoder("utf-8").decode(buf);
+        const parsed = parseHtmlIntoWebEdition(htmlText, u, { finalUrl: directResp.url || targetUrl });
+        if (parsed) return parsed;
+      }
+    } catch (_) {
+      // Expected for cross-origin sites without CORS headers; proceed to Tier 2
+    }
+
+    // Tier 2: Jina Reader HTML mode (CORS-enabled for browsers, returns raw HTML + metadata)
+    try {
+      const jinaHtmlResp = await fetchWithTimeout(
+        `https://r.jina.ai/${targetUrl}`,
+        {
+          headers: {
+            Accept: "application/json",
+            "X-Return-Format": "html",
+          },
+        },
+        22000
+      );
+      if (jinaHtmlResp.ok) {
+        const jJson = await jinaHtmlResp.json();
+        const d = jJson?.data || {};
+        if (d.html) {
+          const parsed = parseHtmlIntoWebEdition(d.html, u, {
+            title: d.title,
+            finalUrl: d.finalUrl || d.url || targetUrl,
+            publishedTime: d.publishedTime,
+          });
+          if (parsed) return parsed;
+        }
+      }
+    } catch (_) {}
+
+    // Tier 3: Jina Reader clean Markdown mode (no custom preflight headers; handles JS SPAs & remote PDFs)
+    try {
+      const jinaMdResp = await fetchWithTimeout(
+        `https://r.jina.ai/${targetUrl}`,
+        { headers: { Accept: "application/json" } },
+        22000
+      );
+      if (jinaMdResp.ok) {
+        const jJson = await jinaMdResp.json();
+        const d = jJson?.data || {};
+        if (d.content) {
+          const parsed = parseMarkdownIntoWebEdition(d.content, u, {
+            title: d.title,
+            publishedTime: d.publishedTime,
+          });
+          if (parsed) return parsed;
+        }
+      }
+    } catch (_) {}
+
+    // Tier 4: AllOrigins JSON wrapper fallback
+    try {
+      const aoResp = await fetchWithTimeout(
+        `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
+        {},
+        7000
+      );
+      if (aoResp.ok) {
+        const aoJson = await aoResp.json();
+        if (aoJson?.contents) {
+          const parsed = parseHtmlIntoWebEdition(aoJson.contents, u, { finalUrl: targetUrl });
+          if (parsed) return parsed;
+        }
+      }
+    } catch (_) {}
+
+    throw new Error(
+      "This site blocked cross-origin browser fetching. Download the page/PDF and drop the file above, or open Imprint locally (http://127.0.0.1:8080)."
+    );
   }
 
   /* ========================================================================
