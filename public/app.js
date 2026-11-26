@@ -228,7 +228,9 @@
 
   const selectionToolbar = document.getElementById("selectionToolbar");
   const selectionAddNoteBtn = document.getElementById("selectionAddNoteBtn");
+  const selectionAddEndnoteBtn = document.getElementById("selectionAddEndnoteBtn");
   const selectionAskAiBtn = document.getElementById("selectionAskAiBtn");
+  const addEndnoteBtn = document.getElementById("addEndnoteBtn");
 
   const notePopover = document.getElementById("notePopover");
   const notePopoverTitle = document.getElementById("notePopoverTitle");
@@ -267,6 +269,7 @@
 
   const editingNoteIds = new Set();
   const expandedNoteIds = new Set();
+  const editingEndnoteNums = new Set();
   const visualControllers = new Map(); // sectionId -> controller
 
   function escapeHTML(str) {
@@ -1197,21 +1200,24 @@
             let firstProseSeenInSection = false;
 
             const proseHtml = slice
-              .map((p) => {
+              .map((p, relIdx) => {
+                const absParaIdx = pStartIdx + relIdx;
                 if (p.type === "subhead") {
-                  return `<h2 class="section-subhead">${p.html}</h2>`;
+                  return `<h2 class="section-subhead" data-para-idx="${absParaIdx}">${p.html}</h2>`;
                 }
                 if (p.type === "blockquote") {
-                  return `<blockquote class="prose-quote"><p>${p.html}</p></blockquote>`;
+                  return `<blockquote class="prose-quote" data-para-idx="${absParaIdx}"><p>${p.html}</p></blockquote>`;
                 }
                 if (!firstProseSeenInSection) {
                   firstProseSeenInSection = true;
                   if (sIdx === 0) {
-                    return `<p class="lead-paragraph">${decorateOpeningParagraphHTML(p.html)}</p>`;
+                    return `<p class="lead-paragraph" data-para-idx="${absParaIdx}">${decorateOpeningParagraphHTML(
+                      p.html
+                    )}</p>`;
                   }
-                  return `<p class="section-open">${p.html}</p>`;
+                  return `<p class="section-open" data-para-idx="${absParaIdx}">${p.html}</p>`;
                 }
-                return `<p>${p.html}</p>`;
+                return `<p data-para-idx="${absParaIdx}">${p.html}</p>`;
               })
               .join("\n");
 
@@ -1312,10 +1318,19 @@
               <ol class="endnotes__list">
                 ${ch.endnotes
                   .map(
-                    (n) =>
-                      `<li id="ch${ch.num}-note-${n.num}"><span class="endnotes__body">${n.html}</span> <a href="#ch${
-                        ch.num
-                      }-ref-${n.num}" class="endnotes__back">&crarr; p. ${n.page || ch.folioStart}</a></li>`
+                    (n) => {
+                      const backHtml =
+                        n.anchored === false
+                          ? `<span class="endnotes__back">p. ${n.page || ch.folioStart}</span>`
+                          : `<a href="#ch${ch.num}-ref-${n.num}" class="endnotes__back">&crarr; p. ${
+                              n.page || ch.folioStart
+                            }</a>`;
+                      return `<li id="ch${ch.num}-note-${n.num}" data-note-uid="${escapeHTML(
+                        n.uid || ""
+                      )}"><span class="endnotes__body">${
+                        n.html || "<em>(Empty endnote)</em>"
+                      }</span> ${backHtml}</li>`;
+                    }
                   )
                   .join("")}
               </ol>
@@ -1429,26 +1444,167 @@
   }
 
   /* ========================================================================
-     7. Endnotes, Chapter View Switching & Scroll-Spy
+     7. Endnotes (View, Create, Edit & Delete), Chapter Switching & Scroll-Spy
      ======================================================================== */
+  async function mutateEndnoteOnServer(payload, opts = {}) {
+    if (!currentBook) return null;
+    const prevScrollY = window.scrollY;
+    const res = await fetch(`/api/books/${encodeURIComponent(currentBook.id)}/endnotes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chapter: activeChapter, ...payload }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      window.alert(data.error || "Failed to update endnotes.");
+      return null;
+    }
+
+    const chIdx = (currentBook.chapters || []).findIndex((c) => c.slug === activeChapter);
+    if (chIdx >= 0 && data.chapter) {
+      currentBook.chapters[chIdx] = data.chapter;
+    }
+
+    if (opts.openEditNum) {
+      editingEndnoteNums.add(opts.openEditNum);
+    }
+
+    renderBookDOM(currentBook);
+    window.scrollTo({ top: prevScrollY, behavior: "instant" in window ? "instant" : "auto" });
+
+    const focusNum = opts.highlightNum || data.createdNum || data.updatedNum || null;
+    if (focusNum) {
+      switchRightTab("endnotes");
+      if (!isDesktopRails()) openRightDrawer();
+      if (opts.startEditingCreated && data.createdNum) {
+        editingEndnoteNums.add(data.createdNum);
+        populateRailEndnotes();
+      }
+      requestAnimationFrame(() => {
+        const railItem = document.getElementById(`rail-note-${focusNum}`);
+        if (railItem) {
+          railItem.classList.add("is-highlighted");
+          railItem.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          const ta = railItem.querySelector(".rail-endnote-editor__input");
+          if (ta) ta.focus();
+        }
+      });
+    }
+    return data;
+  }
+
   function populateRailEndnotes() {
     const meta = CHAPTER_META[activeChapter];
-    if (!meta) return;
-    railEndnotesList.innerHTML = "";
-    endnotesTabCount.textContent = String(meta.endnotesCount);
-    railEndnotesIntro.textContent = meta.endnotesIntro;
+    if (!meta || !currentBook) return;
+    const chObj = (currentBook.chapters || []).find((c) => c.slug === activeChapter);
+    const notesArr = chObj?.endnotes || [];
 
-    meta.endnotesItems.forEach((li, idx) => {
-      const num = idx + 1;
-      const bodySpan = li.querySelector(".endnotes__body");
-      const backLink = li.querySelector(".endnotes__back");
+    railEndnotesList.innerHTML = "";
+    endnotesTabCount.textContent = String(notesArr.length);
+    railEndnotesIntro.textContent =
+      notesArr.length > 0
+        ? `Click any superscript number in ${meta.fullTitle} to highlight its note here.`
+        : "No endnotes yet in this chapter. Select text and click “+ Endnote”, or click “+ Add Endnote” above.";
+
+    notesArr.forEach((n, idx) => {
+      const num = n.num || idx + 1;
+      const isEditing = editingEndnoteNums.has(num);
       const cloneLi = document.createElement("li");
       cloneLi.id = `rail-note-${num}`;
-      cloneLi.innerHTML =
-        (bodySpan ? bodySpan.innerHTML : li.innerHTML) +
-        (backLink
-          ? ` <a href="#${meta.refPrefix}${num}" class="endnotes__back" data-return-ref="${meta.refPrefix}${num}">${backLink.innerHTML}</a>`
-          : "");
+      cloneLi.dataset.noteNum = String(num);
+
+      if (isEditing) {
+        const seedText =
+          typeof n.rawText === "string" && n.rawText.length > 0
+            ? n.rawText
+            : String(n.html || "")
+                .replace(/<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, "[$2]($1)")
+                .replace(/<[^>]+>/g, "")
+                .trim();
+
+        cloneLi.innerHTML = `
+          <div class="rail-endnote-editor">
+            <textarea class="rail-endnote-editor__input" rows="3" placeholder="Write endnote citation, commentary, or [Link](https://…)…">${escapeHTML(
+              seedText
+            )}</textarea>
+            <div class="rail-endnote-editor__actions">
+              <button type="button" class="notes-action-btn" data-cancel-endnote="${num}">Cancel</button>
+              <button type="button" class="notes-action-btn notes-action-btn--primary" data-save-endnote="${num}">Save</button>
+            </div>
+          </div>
+        `;
+
+        const ta = cloneLi.querySelector(".rail-endnote-editor__input");
+        const saveBtn = cloneLi.querySelector("[data-save-endnote]");
+        const cancelBtn = cloneLi.querySelector("[data-cancel-endnote]");
+
+        const commitSave = async () => {
+          const val = ta.value.trim();
+          editingEndnoteNums.delete(num);
+          if (!val && !n.html) {
+            await mutateEndnoteOnServer({ action: "delete", uid: n.uid, num });
+          } else {
+            await mutateEndnoteOnServer(
+              { action: "update", uid: n.uid, num, text: val },
+              { highlightNum: num }
+            );
+          }
+        };
+
+        saveBtn.addEventListener("click", commitSave);
+        cancelBtn.addEventListener("click", async () => {
+          editingEndnoteNums.delete(num);
+          if (!n.html && n.userAdded) {
+            await mutateEndnoteOnServer({ action: "delete", uid: n.uid, num });
+          } else {
+            populateRailEndnotes();
+          }
+        });
+        ta.addEventListener("keydown", (e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+            e.preventDefault();
+            commitSave();
+          } else if (e.key === "Escape") {
+            e.stopPropagation();
+            cancelBtn.click();
+          }
+        });
+      } else {
+        const backLinkHtml =
+          n.anchored === false
+            ? `<span class="endnotes__back">p. ${n.page || chObj.folioStart || 1}</span>`
+            : `<a href="#${meta.refPrefix}${num}" class="endnotes__back" data-return-ref="${
+                meta.refPrefix
+              }${num}">&crarr; p. ${n.page || chObj.folioStart || 1}</a>`;
+
+        cloneLi.innerHTML = `
+          <div class="rail-endnotes-item__row">
+            <div class="rail-endnotes-item__body">
+              ${n.html || "<em>(Empty endnote)</em>"} ${backLinkHtml}
+            </div>
+            <div class="rail-endnotes-item__tools">
+              <button type="button" class="note-card__ghost-btn" data-edit-endnote="${num}" title="Edit endnote">Edit</button>
+              <button type="button" class="note-card__delete" data-delete-endnote="${num}" title="Delete endnote" aria-label="Delete endnote ${num}">&times;</button>
+            </div>
+          </div>
+        `;
+
+        cloneLi.querySelector("[data-edit-endnote]").addEventListener("click", () => {
+          editingEndnoteNums.add(num);
+          populateRailEndnotes();
+          requestAnimationFrame(() => {
+            const ta = document.querySelector(`#rail-note-${num} .rail-endnote-editor__input`);
+            if (ta) ta.focus();
+          });
+        });
+
+        cloneLi.querySelector("[data-delete-endnote]").addEventListener("click", async () => {
+          if (!window.confirm(`Delete Endnote ${num} (and remove its superscript from the text)?`)) return;
+          editingEndnoteNums.delete(num);
+          await mutateEndnoteOnServer({ action: "delete", uid: n.uid, num });
+        });
+      }
+
       railEndnotesList.appendChild(cloneLi);
     });
 
@@ -1762,6 +1918,8 @@
     let maxEnd = -1;
     const parts = [];
     let firstMatchedNode = null;
+    let lastMatchedNode = null;
+    let lastMatchedOffset = 0;
 
     for (let i = 0; i < nodes.length; i++) {
       const tn = nodes[i];
@@ -1775,6 +1933,8 @@
       const e = tn === range.endContainer ? range.endOffset : range.comparePoint(tn, len) > 0 ? 0 : len;
       if (e > s) {
         if (!firstMatchedNode) firstMatchedNode = tn;
+        lastMatchedNode = tn;
+        lastMatchedOffset = e;
         minStart = Math.min(minStart, cum + s);
         maxEnd = Math.max(maxEnd, cum + e);
         parts.push(tn.nodeValue.slice(s, e));
@@ -1786,6 +1946,7 @@
     if (!quote || maxEnd <= minStart) return null;
 
     let locLabel = CHAPTER_META[activeChapter]?.defaultLabel?.split("·")[0]?.trim() || "Chapter";
+    let pageNum = 1;
     if (firstMatchedNode && firstMatchedNode.parentElement) {
       const sec = firstMatchedNode.parentElement.closest("[data-section-label]");
       if (sec) {
@@ -1793,16 +1954,35 @@
         locLabel = raw.split("·")[0].trim() || raw;
       }
       const allFolios = Array.from(chapterEl.querySelectorAll(".folio-marker"));
-      let pageNum = allFolios[0]?.dataset.page || 1;
+      pageNum = Number(allFolios[0]?.dataset.page || 1);
       for (const f of allFolios) {
         const rel = f.compareDocumentPosition(firstMatchedNode);
-        if (rel & Node.DOCUMENT_POSITION_FOLLOWING) pageNum = f.dataset.page || pageNum;
+        if (rel & Node.DOCUMENT_POSITION_FOLLOWING) pageNum = Number(f.dataset.page || pageNum);
         else break;
       }
       locLabel = `${locLabel} · p. ${pageNum}`;
     }
 
-    return { start: minStart, end: maxEnd, quote, locLabel };
+    // Compute exact paragraph index & plain-text character offset for superscript endnote insertion
+    let paraIndex = null;
+    let paraEndOffset = null;
+    if (lastMatchedNode && lastMatchedNode.parentElement) {
+      const paraEl = lastMatchedNode.parentElement.closest("[data-para-idx]");
+      if (paraEl) {
+        paraIndex = Number(paraEl.dataset.paraIdx);
+        const pNodes = getAcceptedTextNodes(paraEl);
+        let pCum = 0;
+        for (const ptn of pNodes) {
+          if (ptn === lastMatchedNode) {
+            paraEndOffset = pCum + lastMatchedOffset;
+            break;
+          }
+          pCum += ptn.nodeValue.length;
+        }
+      }
+    }
+
+    return { start: minStart, end: maxEnd, quote, locLabel, paraIndex, paraEndOffset, pageNum };
   }
 
   function unwrapMarks(container, selector) {
@@ -2252,6 +2432,51 @@
     if (entry) renderNotesList(entry.id);
   });
 
+  if (selectionAddEndnoteBtn) {
+    selectionAddEndnoteBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!pendingSelection) return;
+      const selInfo = pendingSelection;
+      window.getSelection().removeAllRanges();
+      hideSelectionToolbar();
+      await mutateEndnoteOnServer(
+        {
+          action: "add",
+          text: "",
+          paraIndex: selInfo.paraIndex,
+          paraEndOffset: selInfo.paraEndOffset,
+          anchorQuote: selInfo.quote,
+          page: selInfo.pageNum || 1,
+        },
+        { startEditingCreated: true }
+      );
+    });
+  }
+
+  if (addEndnoteBtn) {
+    addEndnoteBtn.addEventListener("click", async () => {
+      if (!currentBook || !CHAPTER_META[activeChapter]) return;
+      // If user currently has text selected in the chapter, anchor to that selection; else add standalone chapter endnote
+      const sel = window.getSelection();
+      const rangeInfo =
+        sel && !sel.isCollapsed && sel.rangeCount > 0 ? rangeToChapterOffsets(sel.getRangeAt(0)) : null;
+      if (rangeInfo) {
+        sel.removeAllRanges();
+        hideSelectionToolbar();
+      }
+      await mutateEndnoteOnServer(
+        {
+          action: "add",
+          text: "",
+          paraIndex: rangeInfo ? rangeInfo.paraIndex : null,
+          paraEndOffset: rangeInfo ? rangeInfo.paraEndOffset : null,
+          anchorQuote: rangeInfo ? rangeInfo.quote : "",
+        },
+        { startEditingCreated: true }
+      );
+    });
+  }
+
   selectionAskAiBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     if (!pendingSelection) return;
@@ -2359,9 +2584,30 @@
           ${sourcesHTML}
           <div class="ai-msg__meta">
             <span>${escapeHTML(msg.highlightLoc || activeModelLabel)}${searchedWeb ? " · Google Search" : ""}</span>
-            <button type="button" class="ai-msg__save-btn" data-save-insight>&#128204; Pin to Notes</button>
+            <div class="ai-msg__actions">
+              <button type="button" class="ai-msg__save-btn" data-save-endnote-ai title="Attach this response as a numbered Endnote">+ Endnote</button>
+              <button type="button" class="ai-msg__save-btn" data-save-insight>&#128204; Pin to Notes</button>
+            </div>
           </div>
         `;
+        const endnoteAiBtn = div.querySelector("[data-save-endnote-ai]");
+        if (endnoteAiBtn) {
+          endnoteAiBtn.addEventListener("click", async () => {
+            const quoteText = (prevUser && prevUser.highlightQuote) || "";
+            endnoteAiBtn.disabled = true;
+            endnoteAiBtn.textContent = "Adding…";
+            const compactNoteText = String(msg.content || "")
+              .replace(/^#{1,4}\s+/gm, "")
+              .replace(/\n+/g, " ")
+              .trim();
+            await mutateEndnoteOnServer({
+              action: "add",
+              text: compactNoteText,
+              anchorQuote: quoteText,
+            });
+            endnoteAiBtn.textContent = "✓ Endnote";
+          });
+        }
         const pinBtn = div.querySelector("[data-save-insight]");
         pinBtn.addEventListener("click", () => {
           const quoteText = (prevUser && prevUser.highlightQuote) || "";

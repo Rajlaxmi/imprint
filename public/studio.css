@@ -347,6 +347,81 @@ html[data-width="wide"] { --measure: 47rem; }
   color: var(--accent);
 }
 
+.ai-msg__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* Editable Endnotes Toolbar & Cards in Right Sidebar */
+.endnotes-toolbar {
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.endnotes-toolbar__hint {
+  font-size: 0.68rem;
+  color: var(--ink-muted);
+}
+
+.rail-endnotes-item__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.rail-endnotes-item__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.rail-endnotes-item__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+  opacity: 0.65;
+  transition: opacity 0.14s ease;
+}
+
+.rail-endnotes-list li:hover .rail-endnotes-item__tools {
+  opacity: 1;
+}
+
+.rail-endnote-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+  margin-top: 0.2rem;
+}
+
+.rail-endnote-editor__input {
+  width: 100%;
+  min-height: 3.4rem;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--ink);
+  padding: 0.4rem 0.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  line-height: 1.44;
+}
+
+.rail-endnote-editor__input:focus {
+  outline: 1.5px solid var(--vermilion);
+  border-color: var(--vermilion);
+  background: var(--bg-elevated);
+}
+
+.rail-endnote-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
 .prose-quote {
   margin: 1.05em 0;
   padding: 0.15em 0 0.15em 1.25em;

@@ -226,6 +226,186 @@ function stripTagsKeepUrls(htmlStr) {
     .trim();
 }
 
+function escapeHtmlServer(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function markdownToEndnoteHtml(rawText) {
+  const escaped = escapeHtmlServer(String(rawText || "").trim()).replace(/\r?\n+/g, " ");
+  const linkTokens = [];
+  let out = escaped.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    (_, label, url) => {
+      const idx = linkTokens.length;
+      linkTokens.push(
+        `<a href="${url}" target="_blank" rel="noopener noreferrer" class="prose-link">${label}</a>`
+      );
+      return `@@ENLINK_${idx}@@`;
+    }
+  );
+  out = out.replace(/(^|[\s(>])(https?:\/\/[^\s<)"']+)/g, (_, prefix, rawUrl) => {
+    const trail = rawUrl.match(/([.,;:!?)]+)$/);
+    const cleanUrl = trail ? rawUrl.slice(0, -trail[1].length) : rawUrl;
+    const suffix = trail ? trail[1] : "";
+    const idx = linkTokens.length;
+    linkTokens.push(
+      `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="prose-link">${cleanUrl}</a>`
+    );
+    return `${prefix}@@ENLINK_${idx}@@${suffix}`;
+  });
+  out = out
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, "$1<em>$2</em>");
+  linkTokens.forEach((htmlLink, idx) => {
+    out = out.replace(`@@ENLINK_${idx}@@`, htmlLink);
+  });
+  return out;
+}
+
+function decodeEntityUtf16Len(entity) {
+  const dec = entity.match(/^&#(\d+);$/);
+  if (dec) {
+    try {
+      return String.fromCodePoint(Number(dec[1])).length;
+    } catch (_) {
+      return 1;
+    }
+  }
+  const hex = entity.match(/^&#x([0-9a-fA-F]+);$/);
+  if (hex) {
+    try {
+      return String.fromCodePoint(parseInt(hex[1], 16)).length;
+    } catch (_) {
+      return 1;
+    }
+  }
+  return 1;
+}
+
+function ensureChapterEndnoteUids(ch) {
+  const endnotes = Array.isArray(ch.endnotes) ? ch.endnotes : [];
+  const numToUid = new Map();
+  endnotes.forEach((n, idx) => {
+    const num = n.num || idx + 1;
+    if (!n.uid) n.uid = `en_${ch.num}_${num}`;
+    numToUid.set(String(num), n.uid);
+  });
+
+  (ch.paragraphs || []).forEach((p) => {
+    p.html = String(p.html || "").replace(
+      /<sup class="note-ref"(?:\s+data-note-uid="([^"]+)")?[^>]*>([\s\S]*?)<\/sup>/gi,
+      (full, existingUid, inner) => {
+        if (existingUid) return full;
+        const mNum = inner.match(/data-note="(\d+)"/i) || inner.match(/>(\d+)<\/a>/i);
+        const numStr = mNum ? mNum[1] : "";
+        const uid = numToUid.get(numStr) || `en_auto_${Math.random().toString(36).slice(2, 7)}`;
+        return `<sup class="note-ref" data-note-uid="${uid}">${inner}</sup>`;
+      }
+    );
+  });
+}
+
+function insertSuperscriptInParagraphHtml(paraHtml, targetOffset, uid, chNum) {
+  const htmlStr = String(paraHtml || "");
+  const tokenRe =
+    /<span class="folio-marker"[^>]*>[\s\S]*?<\/span>|<sup class="note-ref"[^>]*>[\s\S]*?<\/sup>|<[^>]+>|&(?:#\d+|#x[0-9a-fA-F]+|[a-zA-Z0-9]+);|[\s\S]/gi;
+
+  let visCount = 0;
+  let insertPos = htmlStr.length;
+  let reached = false;
+  let match;
+
+  while ((match = tokenRe.exec(htmlStr)) !== null) {
+    const tok = match[0];
+    const tokStart = match.index;
+    const tokEnd = tokStart + tok.length;
+
+    if (tok.startsWith("<")) {
+      if (reached) {
+        // Step cleanly past closing inline tags right at the end of the selection
+        if (/^<\/(?:a|em|i|strong|b|code|sub|sup)>$/i.test(tok)) {
+          insertPos = tokEnd;
+          continue;
+        }
+        break;
+      }
+      continue;
+    }
+
+    if (reached) break;
+
+    const charLen = tok.startsWith("&") && tok.endsWith(";") ? decodeEntityUtf16Len(tok) : tok.length;
+    visCount += charLen;
+    if (visCount >= targetOffset) {
+      insertPos = tokEnd;
+      reached = true;
+    }
+  }
+
+  const supTag = `<sup class="note-ref" data-note-uid="${uid}"><a href="#ch${chNum}-note-1" id="ch${chNum}-ref-1" data-note="1" aria-label="Note 1">1</a></sup>`;
+  return htmlStr.slice(0, insertPos) + supTag + htmlStr.slice(insertPos);
+}
+
+function renumberChapterEndnotes(ch) {
+  ensureChapterEndnoteUids(ch);
+  const byUid = new Map();
+  (ch.endnotes || []).forEach((n) => {
+    byUid.set(n.uid, n);
+  });
+
+  const ordered = [];
+  const seenUids = new Set();
+
+  (ch.paragraphs || []).forEach((p) => {
+    p.html = String(p.html || "").replace(
+      /<sup class="note-ref"\s+data-note-uid="([^"]+)"[^>]*>[\s\S]*?<\/sup>/gi,
+      (_, uid) => {
+        const noteObj = byUid.get(uid);
+        if (!noteObj) return "";
+        let assignedNum;
+        if (!seenUids.has(uid)) {
+          seenUids.add(uid);
+          assignedNum = ordered.length + 1;
+          ordered.push({
+            ...noteObj,
+            uid,
+            num: assignedNum,
+            page: p.page || noteObj.page || ch.folioStart || 1,
+            anchored: true,
+          });
+        } else {
+          assignedNum = ordered.find((x) => x.uid === uid)?.num || 1;
+        }
+        return `<sup class="note-ref" data-note-uid="${uid}"><a href="#ch${ch.num}-note-${assignedNum}" id="ch${ch.num}-ref-${assignedNum}" data-note="${assignedNum}" aria-label="Note ${assignedNum}">${assignedNum}</a></sup>`;
+      }
+    );
+  });
+
+  // Append any unanchored chapter-end notes in order
+  for (const n of ch.endnotes || []) {
+    if (!seenUids.has(n.uid)) {
+      seenUids.add(n.uid);
+      ordered.push({
+        ...n,
+        num: ordered.length + 1,
+        page: n.page || ch.folioEnd || ch.folioStart || 1,
+        anchored: false,
+      });
+    }
+  }
+
+  ch.endnotes = ordered;
+  ch.receiptNotes =
+    ordered.length > 0
+      ? `NOS. 01–${String(ordered.length).padStart(2, "0")}`
+      : "INLINE EDITION";
+}
+
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -1599,6 +1779,125 @@ const server = http.createServer(async (req, res) => {
         state.chapters[ch].annotations = list;
         writeBookState(bookId, state);
         return sendJSON(res, 200, { ok: true, chapter: ch, count: list.length });
+      }
+
+      // POST /api/books/:id/endnotes -> Add, update, or delete chapter endnotes (anchored or standalone)
+      if (subroute === "endnotes" && req.method === "POST") {
+        const body = await readJsonBody(req);
+        const book = readBook(bookId);
+        if (!book) return sendJSON(res, 404, { error: "Book not found" });
+
+        const chSlug = normalizeChapterSlug(body.chapter);
+        const ch = (book.chapters || []).find((c) => c.slug === chSlug);
+        if (!ch) return sendJSON(res, 404, { error: "Chapter not found" });
+
+        ensureChapterEndnoteUids(ch);
+        const action = String(body.action || "add");
+
+        if (action === "add") {
+          const uid = `en_u_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+          const rawText = String(body.text || "").trim();
+          const htmlBody = rawText ? markdownToEndnoteHtml(rawText) : "";
+          const paraIdx =
+            typeof body.paraIndex === "number" &&
+            body.paraIndex >= 0 &&
+            body.paraIndex < (ch.paragraphs || []).length
+              ? body.paraIndex
+              : null;
+
+          let anchored = false;
+          let notePage = Number(body.page) || ch.folioStart || 1;
+
+          if (paraIdx !== null && typeof body.paraEndOffset === "number" && body.paraEndOffset > 0) {
+            const targetPara = ch.paragraphs[paraIdx];
+            targetPara.html = insertSuperscriptInParagraphHtml(
+              targetPara.html,
+              body.paraEndOffset,
+              uid,
+              ch.num
+            );
+            notePage = targetPara.page || notePage;
+            anchored = true;
+          } else if (body.anchorQuote) {
+            // Fallback quote match if added from a saved chat message without exact DOM offset
+            const needle = String(body.anchorQuote).trim();
+            if (needle.length >= 3) {
+              for (const p of ch.paragraphs || []) {
+                const plain = stripTags(p.html);
+                const pos = plain.indexOf(needle);
+                if (pos >= 0) {
+                  p.html = insertSuperscriptInParagraphHtml(
+                    p.html,
+                    pos + needle.length,
+                    uid,
+                    ch.num
+                  );
+                  notePage = p.page || notePage;
+                  anchored = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (!Array.isArray(ch.endnotes)) ch.endnotes = [];
+          ch.endnotes.push({
+            uid,
+            num: ch.endnotes.length + 1,
+            html: htmlBody,
+            rawText,
+            page: notePage,
+            anchored,
+            userAdded: true,
+          });
+
+          renumberChapterEndnotes(ch);
+          writeBook(book);
+
+          const created = ch.endnotes.find((n) => n.uid === uid);
+          return sendJSON(res, 200, {
+            ok: true,
+            chapter: ch,
+            createdUid: uid,
+            createdNum: created ? created.num : ch.endnotes.length,
+          });
+        }
+
+        if (action === "update") {
+          const target = (ch.endnotes || []).find(
+            (n) => (body.uid && n.uid === body.uid) || (body.num && n.num === Number(body.num))
+          );
+          if (!target) return sendJSON(res, 404, { error: "Endnote not found" });
+          const rawText = String(body.text ?? "").trim();
+          target.rawText = rawText;
+          target.html = markdownToEndnoteHtml(rawText);
+          writeBook(book);
+          return sendJSON(res, 200, { ok: true, chapter: ch, updatedNum: target.num });
+        }
+
+        if (action === "delete") {
+          const target = (ch.endnotes || []).find(
+            (n) => (body.uid && n.uid === body.uid) || (body.num && n.num === Number(body.num))
+          );
+          if (!target) return sendJSON(res, 404, { error: "Endnote not found" });
+          const delUid = target.uid;
+
+          (ch.paragraphs || []).forEach((p) => {
+            p.html = String(p.html || "").replace(
+              new RegExp(
+                `<sup class="note-ref"\\s+data-note-uid="${delUid}"[^>]*>[\\s\\S]*?<\\/sup>`,
+                "gi"
+              ),
+              ""
+            );
+          });
+          ch.endnotes = (ch.endnotes || []).filter((n) => n.uid !== delUid);
+          renumberChapterEndnotes(ch);
+          writeBook(book);
+          return sendJSON(res, 200, { ok: true, chapter: ch });
+        }
+
+        return sendJSON(res, 400, { error: "Unsupported endnotes action" });
       }
 
       // POST /api/books/:id/chat -> Gemini 4 Neon study companion

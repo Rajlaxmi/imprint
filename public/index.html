@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Book Viz Studio | Library Index</title>
   <meta name="description" content="Upload any EPUB, PDF, or web link and let Gemini process it in the background into an interactive editorial edition with full prose, 16:9 Story Comics, animated SVG diagrams, margin notes, and Gemini 4 Neon AI study chat." />
-  <link rel="stylesheet" href="styles.css?v=7" />
-  <link rel="stylesheet" href="studio.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=8" />
+  <link rel="stylesheet" href="studio.css?v=8" />
 </head>
 <body>
   <a class="skip-link" href="#chapter-text">Skip to chapter text</a>
@@ -374,6 +374,10 @@
 
       <!-- Pane 3: Book Endnotes in Right Sidebar -->
       <div class="rail-pane" id="bookEndnotesPane" role="tabpanel" aria-labelledby="tabEndnotesBtn" hidden>
+        <div class="notes-toolbar endnotes-toolbar">
+          <button type="button" class="notes-action-btn notes-action-btn--primary" id="addEndnoteBtn">+ Add Endnote</button>
+          <span class="endnotes-toolbar__hint">Select text &rarr; <strong>+ Endnote</strong> to add superscript</span>
+        </div>
         <p class="rail-endnotes-intro" id="railEndnotesIntro">Click any superscript number in the text to highlight its note here.</p>
         <ol class="rail-endnotes-list" id="railEndnotesList"></ol>
       </div>
@@ -464,6 +468,7 @@
     <button type="button" class="hl-swatch hl-swatch--sky" data-hl-create="sky" title="Highlight Blue" aria-label="Highlight Blue"></button>
     <span class="selection-toolbar__divider" aria-hidden="true"></span>
     <button type="button" class="selection-toolbar__btn" id="selectionAddNoteBtn">+ Note</button>
+    <button type="button" class="selection-toolbar__btn" id="selectionAddEndnoteBtn" title="Insert numbered superscript endnote at selection">+ Endnote</button>
     <button type="button" class="selection-toolbar__ask-btn" id="selectionAskAiBtn">&#10024; Ask AI</button>
   </div>
 
@@ -490,6 +495,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
