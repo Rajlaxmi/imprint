@@ -7,9 +7,9 @@
 :root {
   --body-size: 1.02rem;
   --line-height: 1.62;
-  --measure: 39rem;
-  --left-rail-w: 17rem;
-  --right-rail-w: 24rem;
+  --measure: 52rem;
+  --left-rail-w: 15.5rem;
+  --right-rail-w: 22.5rem;
 }
 
 /* Match exact crisp book-page density of the original screenshot */
@@ -18,11 +18,11 @@ html[data-size="md"] { --body-size: 1.02rem; --line-height: 1.62; }
 html[data-size="lg"] { --body-size: 1.13rem; --line-height: 1.68; }
 html[data-size="xl"] { --body-size: 1.25rem; --line-height: 1.72; }
 
-html[data-width="book"] { --measure: 39rem; }
-html[data-width="wide"] { --measure: 47rem; }
+html[data-width="book"] { --measure: 52rem; }
+html[data-width="wide"] { --measure: 64rem; }
 
 .workspace-layout {
-  max-width: 106rem;
+  max-width: 120rem;
   margin: 0 auto;
 }
 
@@ -31,7 +31,7 @@ html[data-width="wide"] { --measure: 47rem; }
 }
 
 .book-stage {
-  padding: 2.35rem 2rem 3.8rem;
+  padding: 2.25rem 1.75rem 3.8rem;
 }
 
 /* 1. Sticky Top Reader Bar — Compact & Never Clips Dropdowns */

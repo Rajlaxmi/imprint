@@ -48,10 +48,10 @@
   /* Fluid Reading Geometry */
   --body-size: 1.15rem;
   --line-height: 1.74;
-  --measure: 39rem;
+  --measure: 52rem;
   --bar-height: 52px;
-  --left-rail-w: 17rem;
-  --right-rail-w: 24rem;
+  --left-rail-w: 15.5rem;
+  --right-rail-w: 22.5rem;
 }
 
 /* Themes */
@@ -96,8 +96,8 @@ html[data-size="lg"] { --body-size: 1.285rem; --line-height: 1.78; }
 html[data-size="xl"] { --body-size: 1.425rem; --line-height: 1.82; }
 
 /* Measure Widths */
-html[data-width="book"] { --measure: 39rem; }
-html[data-width="wide"] { --measure: 47rem; }
+html[data-width="book"] { --measure: 52rem; }
+html[data-width="wide"] { --measure: 64rem; }
 
 *,
 *::before,
@@ -558,7 +558,7 @@ body {
   display: grid;
   grid-template-columns: var(--left-rail-w) minmax(0, 1fr) var(--right-rail-w);
   align-items: start;
-  max-width: 106rem;
+  max-width: 120rem;
   margin: 0 auto;
 }
 
