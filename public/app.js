@@ -583,33 +583,33 @@
 
   function renderDiagramBox(box, x, width, boxClass, titleClass) {
     const cx = x + width / 2;
-    const titleLines = splitSvgLines(box?.title || "CONCEPT", 17, 2);
-    const subLines = splitSvgLines(box?.sub || "", 24, 2);
+    const titleLines = splitSvgLines(box?.title || "CONCEPT", 15, 2);
+    const subLines = splitSvgLines(box?.sub || "", 21, 2);
     const titleStartY = titleLines.length > 1 ? 66 : 73;
     const subStartY = titleLines.length > 1 ? 94 : 92;
 
     return `
-      <rect x="${x}" y="46" width="${width}" height="70" rx="6" class="${boxClass}" />
-      ${renderSvgTextLines(titleLines, cx, titleStartY, 13, titleClass, width - 16)}
-      ${renderSvgTextLines(subLines, cx, subStartY, 12, "sv-sub-label", width - 16)}
+      <rect x="${x}" y="48" width="${width}" height="66" rx="6" class="${boxClass}" />
+      ${renderSvgTextLines(titleLines, cx, titleStartY, 13, titleClass, width - 14)}
+      ${renderSvgTextLines(subLines, cx, subStartY, 12, "sv-sub-label", width - 14)}
     `;
   }
 
   function renderDiagramSVG(diagram) {
     const d = diagram || {};
-    const headingLines = splitSvgLines(d.heading || "CONCEPT DIAGRAM", 54, 1);
-    const footerLines = splitSvgLines(d.footer || "", 68, 2);
-    const svgHeight = footerLines.length > 1 ? 196 : 184;
+    const headingLines = splitSvgLines(d.heading || "CONCEPT DIAGRAM", 52, 1);
+    const footerLines = splitSvgLines(d.footer || "", 64, 2);
+    const svgHeight = footerLines.length > 1 ? 192 : 180;
 
     return `<svg viewBox="0 0 640 ${svgHeight}" role="img" aria-label="${escapeHTML(d.heading || "Concept Diagram")}">
-      ${renderSvgTextLines(headingLines, 320, 25, 13, "sv-mono-label", 580)}
-      ${renderDiagramBox(d.box1 || { title: "PREMISE" }, 22, 174, "sv-card-box", "sv-box-title")}
-      <line x1="201" y1="81" x2="228" y2="81" class="sv-flow-dots sv-flow-dots--indigo" />
-      ${renderDiagramBox(d.box2 || { title: "MECHANISM" }, 233, 174, "sv-card-box sv-card-box--indigo", "sv-box-title sv-indigo-fill")}
-      <line x1="412" y1="81" x2="439" y2="81" class="sv-flow-dots" />
-      ${renderDiagramBox(d.box3 || { title: "OUTCOME" }, 444, 174, "sv-card-box sv-card-box--heavy", "sv-box-title sv-accent-fill")}
-      <line x1="22" y1="134" x2="618" y2="134" class="sv-divider-dash" />
-      ${renderSvgTextLines(footerLines, 320, 156, 15, "sv-box-title", 588)}
+      ${renderSvgTextLines(headingLines, 320, 26, 13, "sv-mono-label", 548)}
+      ${renderDiagramBox(d.box1 || { title: "PREMISE" }, 44, 144, "sv-card-box", "sv-box-title")}
+      <line x1="194" y1="81" x2="242" y2="81" class="sv-flow-dots sv-flow-dots--indigo" />
+      ${renderDiagramBox(d.box2 || { title: "MECHANISM" }, 248, 144, "sv-card-box sv-card-box--indigo", "sv-box-title sv-indigo-fill")}
+      <line x1="398" y1="81" x2="446" y2="81" class="sv-flow-dots" />
+      ${renderDiagramBox(d.box3 || { title: "OUTCOME" }, 452, 144, "sv-card-box sv-card-box--heavy", "sv-box-title sv-accent-fill")}
+      <line x1="44" y1="130" x2="596" y2="130" class="sv-divider-dash" />
+      ${renderSvgTextLines(footerLines, 320, 154, 15, "sv-box-title", 548)}
     </svg>`;
   }
 

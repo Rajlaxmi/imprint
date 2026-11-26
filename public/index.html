@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Book Viz Studio | Interactive Gemini Book Edition</title>
   <meta name="description" content="Upload any EPUB or PDF book and let Gemini process it in the background into an interactive editorial edition with full prose, 16:9 Story Comics, animated SVG diagrams, margin notes, and Gemini 4 Neon AI study chat." />
-  <link rel="stylesheet" href="styles.css?v=3" />
-  <link rel="stylesheet" href="studio.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=4" />
+  <link rel="stylesheet" href="studio.css?v=4" />
 </head>
 <body>
   <a class="skip-link" href="#chapter-text">Skip to chapter text</a>
@@ -27,12 +27,12 @@
           <span class="bar-btn__label">Sections</span>
         </button>
 
-        <button type="button" class="bar-btn library-pill-btn" id="libraryOpenBtn" title="Open Book Library &amp; Upload EPUB / PDF">
+        <button type="button" class="bar-btn library-pill-btn" id="libraryOpenBtn" title="Open Book Library, Upload EPUB/PDF, or Paste Link">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M2.5 3.25H6.5C7.33 3.25 8 3.92 8 4.75V13.25C8 12.56 7.44 12 6.75 12H2.5V3.25Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
             <path d="M13.5 3.25H9.5C8.67 3.25 8 3.92 8 4.75V13.25C8 12.56 8.56 12 9.25 12H13.5V3.25Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
           </svg>
-          <span class="bar-btn__label">Library / + Upload</span>
+          <span class="bar-btn__label">Library</span>
         </button>
 
         <a href="#top" class="brand-pill" id="brandBookPill" title="Return to top">
@@ -175,11 +175,9 @@
           </dl>
 
           <div class="receipt-rule" aria-hidden="true"></div>
-          <p class="receipt-tagline" id="receiptTagline">“FULL BOOK PROSE · STORY COMICS · ANIMATED DIAGRAMS · AI STUDY COMPANION”</p>
-          <div class="receipt-actions-row">
-            <a href="#chapter-text" class="receipt-cta" id="receiptReadCta">BEGIN READING &darr;</a>
-            <button type="button" class="receipt-cta receipt-cta--alt" id="receiptUploadCta">+ UPLOAD OR PASTE LINK</button>
-          </div>
+          <p class="receipt-tagline" id="receiptTagline">“FULL BOOK PROSE · STORY COMICS · ANIMATED DIAGRAMS”</p>
+          <a href="#chapter-text" class="receipt-cta" id="receiptReadCta">BEGIN READING &darr;</a>
+          <button type="button" class="receipt-switch-link" id="receiptUploadCta">Switch book / Upload or paste link</button>
         </div>
         <div class="receipt-card__teeth receipt-card__teeth--bottom" aria-hidden="true"></div>
       </div>
@@ -357,37 +355,37 @@
         <button type="button" class="rail-close-btn studio-modal__close" id="libraryCloseBtn" aria-label="Close library">&times;</button>
       </div>
 
-      <!-- Drag & Drop Upload + Paste Link Box -->
+      <!-- Compact Drag & Drop Upload + Paste Link Box -->
       <div class="upload-dropzone" id="uploadDropzone">
         <input type="file" id="bookFileInput" accept=".epub,.pdf,application/epub+zip,application/pdf" hidden />
         <div class="upload-dropzone__main">
           <div class="upload-dropzone__icon" aria-hidden="true">EPUB / PDF</div>
           <div class="upload-dropzone__copy">
-            <p class="upload-dropzone__headline">Drop an <strong>.epub</strong> or <strong>.pdf</strong> here, or <button type="button" class="upload-browse-link" id="uploadBrowseBtn">choose a file</button></p>
-            <p class="upload-dropzone__sub">Extracts 100% of the actual book prose immediately, then generates section guides, animated SVG diagrams &amp; 16:9 Story Comics in the background.</p>
+            <p class="upload-dropzone__headline">Drop an <strong>.epub</strong> or <strong>.pdf</strong>, or <button type="button" class="upload-browse-link" id="uploadBrowseBtn">choose file</button></p>
+            <p class="upload-dropzone__sub">Full actual prose immediately · Story Comics &amp; SVG diagrams in background.</p>
           </div>
         </div>
 
-        <div class="url-import-divider" aria-hidden="true"><span>OR PASTE A LINK</span></div>
+        <div class="url-import-divider" aria-hidden="true"><span>OR PASTE LINK</span></div>
 
         <form class="url-import-form" id="bookUrlForm">
           <input
             type="url"
             id="bookUrlInput"
             class="url-import__input"
-            placeholder="Paste link to .epub, .pdf, Project Gutenberg, arXiv, or web text (https://…)…"
+            placeholder="https://… (.epub, .pdf, Gutenberg, arXiv, web)"
             autocomplete="off"
             required
           />
-          <button type="submit" class="studio-primary-btn url-import__btn" id="bookUrlSubmitBtn">Import Link &rarr;</button>
+          <button type="submit" class="studio-primary-btn url-import__btn" id="bookUrlSubmitBtn">Import</button>
         </form>
 
         <div class="upload-dropzone__options">
-          <label class="upload-mode-label" for="comicModeSelect">Background Visual Depth:</label>
+          <span class="upload-mode-label">Visuals:</span>
           <select id="comicModeSelect" class="ai-model-select">
-            <option value="all" selected>Full Illustrated Edition (Story Comics + SVG Diagrams for all sections)</option>
-            <option value="first">Balanced for Long Books (1st Story Comic per chapter + all SVG Diagrams)</option>
-            <option value="diagrams_only">Fast Mode (All SVG Diagrams now · generate Comics on demand)</option>
+            <option value="all" selected>Full Comics + Diagrams</option>
+            <option value="first">1st Comic / Ch + Diagrams</option>
+            <option value="diagrams_only">Diagrams Only (Fast)</option>
           </select>
         </div>
 
@@ -450,6 +448,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
