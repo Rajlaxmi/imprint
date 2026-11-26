@@ -114,6 +114,15 @@
   const topBarSep = document.getElementById("topBarSep");
   const brandBookShort = document.getElementById("brandBookShort");
 
+  const indexNavBtn = document.getElementById("indexNavBtn");
+  const indexPage = document.getElementById("indexPage");
+  const shelfIconsGrid = document.getElementById("shelfIconsGrid");
+  const shelfSearchInput = document.getElementById("shelfSearchInput");
+  const shelfAddBtn = document.getElementById("shelfAddBtn");
+  const shelfCountAll = document.getElementById("shelfCountAll");
+  const shelfCountBooks = document.getElementById("shelfCountBooks");
+  const shelfCountPages = document.getElementById("shelfCountPages");
+
   const libraryOpenBtn = document.getElementById("libraryOpenBtn");
   const receiptUploadCta = document.getElementById("receiptUploadCta");
   const emptyStageCard = document.getElementById("emptyStageCard");
@@ -252,6 +261,9 @@
   let serverAvailable = false;
   let activeModel = "gemini-4-neon";
   let activeModelLabel = "Gemini 4 Neon";
+  let activeView = "index"; // "index" | "reader"
+  let shelfFilter = "all"; // "all" | "books" | "pages"
+  let shelfQuery = "";
 
   const editingNoteIds = new Set();
   const expandedNoteIds = new Set();
@@ -515,6 +527,29 @@
     requestAnimationFrame(() => aiPromptInput.focus());
   });
 
+  function setAppView(viewName) {
+    activeView = viewName === "reader" ? "reader" : "index";
+    root.setAttribute("data-view", activeView);
+    if (activeView === "index") {
+      document.title = "Book Viz Studio | Library Index";
+      closeAllDropdowns(null);
+      closeNotePopover();
+      hideSelectionToolbar();
+    } else if (currentBook) {
+      document.title = `${currentBook.title} | ${currentBook.author} — Book Viz Studio`;
+      requestAnimationFrame(fitReceiptTitle);
+    }
+  }
+
+  function showIndexPage(pushHash = true) {
+    setAppView("index");
+    renderShelfIcons();
+    if (pushHash && window.location.hash !== "#index") {
+      history.pushState(null, "", "#index");
+    }
+    window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+  }
+
   function openLibraryModal() {
     refreshLibraryList();
     libraryModal.hidden = false;
@@ -524,6 +559,12 @@
     libraryModal.hidden = true;
   }
 
+  if (indexNavBtn) {
+    indexNavBtn.addEventListener("click", () => showIndexPage(true));
+  }
+  if (shelfAddBtn) {
+    shelfAddBtn.addEventListener("click", openLibraryModal);
+  }
   libraryOpenBtn.addEventListener("click", openLibraryModal);
   receiptUploadCta.addEventListener("click", openLibraryModal);
   emptyStageUploadBtn.addEventListener("click", openLibraryModal);
@@ -2473,12 +2514,189 @@
   });
 
   /* ========================================================================
-     10. Upload EPUB / PDF, Library Management & Live Background Polling
+     10. Index Page Icon Shelf, Upload / Link Import & Live Background Polling
      ======================================================================== */
+  function hashPaletteIndex(idStr) {
+    let h = 0;
+    const s = String(idStr || "");
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h % 5;
+  }
+
+  function isWebPageItem(item) {
+    return String(item.sourceFormat || "").toLowerCase() === "web";
+  }
+
+  function makeInitialsMonogram(title) {
+    const words = String(title || "B")
+      .replace(/[^A-Za-z0-9\s]/g, " ")
+      .trim()
+      .split(/\s+/)
+      .filter((w) => !/^(the|a|an|on|of|in|to|and)$/i.test(w));
+    const pick = words.length ? words : String(title || "B").trim().split(/\s+/);
+    return pick
+      .slice(0, 2)
+      .map((w) => (w[0] || "").toUpperCase())
+      .join("");
+  }
+
+  async function deleteBookById(id) {
+    if (!window.confirm("Remove this item and its generated visuals from your library?")) return;
+    await fetch(`/api/books/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
+    await idbDeleteBook(id);
+    await refreshLibraryList();
+    if (currentBook && currentBook.id === id) {
+      currentBook = null;
+      liveJobPill.hidden = true;
+      showIndexPage(true);
+    }
+  }
+
+  function renderShelfIcons() {
+    if (!shelfIconsGrid) return;
+
+    const booksOnlyCount = libraryBooks.filter((b) => !isWebPageItem(b)).length;
+    const pagesOnlyCount = libraryBooks.filter((b) => isWebPageItem(b)).length;
+    if (shelfCountAll) shelfCountAll.textContent = String(libraryBooks.length);
+    if (shelfCountBooks) shelfCountBooks.textContent = String(booksOnlyCount);
+    if (shelfCountPages) shelfCountPages.textContent = String(pagesOnlyCount);
+
+    const q = shelfQuery.trim().toLowerCase();
+    const filtered = libraryBooks.filter((b) => {
+      if (shelfFilter === "books" && isWebPageItem(b)) return false;
+      if (shelfFilter === "pages" && !isWebPageItem(b)) return false;
+      if (q) {
+        const hay = `${b.title || ""} ${b.subtitle || ""} ${b.author || ""} ${b.publisherMeta || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    const tilesHtml = filtered
+      .map((b) => {
+        const isPage = isWebPageItem(b);
+        const palette = hashPaletteIndex(b.id);
+        const fmtBadge = isPage ? "PAGE" : (b.sourceFormat || "BOOK").toUpperCase();
+        const pubShort = (b.publisherMeta || b.pubDate || "").replace(/\s*EDITION$/i, "").slice(0, 14);
+        const mins = Math.max(1, Math.round((b.wordCount || 250) / 245));
+        const metaLine = isPage
+          ? `~${mins}m read · ${b.totalPages || 1}p`
+          : `${b.chapterCount || 1} ch · ~${mins}m`;
+        const job = b.job || { status: "ready", percent: 100 };
+        const isProcessing = job.status === "processing";
+        const pct = Math.max(5, Math.min(99, Number(job.percent || 12)));
+
+        const artInner = b.previewComicUrl
+          ? `<img src="${escapeHTML(b.previewComicUrl)}" alt="" loading="lazy" />`
+          : `<span class="shelf-icon__monogram">${escapeHTML(makeInitialsMonogram(b.title))}</span>`;
+
+        return `
+          <div class="shelf-tile" role="listitem">
+            <button type="button" class="shelf-tile__delete" data-shelf-delete="${escapeHTML(
+              b.id
+            )}" title="Remove from library" aria-label="Remove ${escapeHTML(b.title)}">&times;</button>
+            <button type="button" class="shelf-tile__open" data-shelf-open="${escapeHTML(
+              b.id
+            )}" title="Open ${escapeHTML(b.title)}">
+              <div class="shelf-icon ${isPage ? "shelf-icon--page" : "shelf-icon--book"}" data-palette="${palette}">
+                <div class="shelf-icon__top">
+                  <span class="shelf-icon__badge">${escapeHTML(fmtBadge)}</span>
+                  <span class="shelf-icon__pub">${escapeHTML(pubShort)}</span>
+                </div>
+                <div class="shelf-icon__art">${artInner}</div>
+                <div class="shelf-icon__cover-title">${escapeHTML(b.title || "Untitled")}</div>
+                ${
+                  isProcessing
+                    ? `<div class="shelf-icon__progress"><span class="job-live-pill__spinner" style="border-top-color:#fff;border-color:rgba(255,255,255,0.3);width:8px;height:8px;"></span><span>${pct}%</span></div>`
+                    : ""
+                }
+              </div>
+              <div class="shelf-label">
+                <p class="shelf-label__title">${escapeHTML(b.title || "Untitled")}</p>
+                <p class="shelf-label__author">${escapeHTML(b.author || "")}</p>
+                <span class="shelf-label__meta">${escapeHTML(metaLine)}</span>
+              </div>
+            </button>
+          </div>
+        `;
+      })
+      .join("");
+
+    const addTileHtml = `
+      <div class="shelf-tile" role="listitem">
+        <button type="button" class="shelf-tile__open" id="shelfAddTileBtn" title="Upload an EPUB/PDF or paste a web link">
+          <div class="shelf-icon shelf-icon--add">
+            <span class="shelf-icon__plus" aria-hidden="true">+</span>
+            <span class="shelf-icon__add-hint">Add Book / Link</span>
+          </div>
+          <div class="shelf-label">
+            <p class="shelf-label__title">New Edition</p>
+            <p class="shelf-label__author">EPUB, PDF, or URL</p>
+          </div>
+        </button>
+      </div>
+    `;
+
+    shelfIconsGrid.innerHTML = tilesHtml + addTileHtml;
+
+    shelfIconsGrid.querySelectorAll("[data-shelf-open]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.shelfOpen;
+        loadAndOpenBook(id, true);
+      });
+    });
+
+    shelfIconsGrid.querySelectorAll("[data-shelf-delete]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteBookById(btn.dataset.shelfDelete);
+      });
+    });
+
+    const addTileBtn = document.getElementById("shelfAddTileBtn");
+    if (addTileBtn) addTileBtn.addEventListener("click", openLibraryModal);
+  }
+
+  document.querySelectorAll("[data-shelf-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      shelfFilter = btn.dataset.shelfFilter || "all";
+      document.querySelectorAll("[data-shelf-filter]").forEach((b) => {
+        b.classList.toggle("is-active", b === btn);
+      });
+      renderShelfIcons();
+    });
+  });
+
+  if (shelfSearchInput) {
+    shelfSearchInput.addEventListener("input", () => {
+      shelfQuery = shelfSearchInput.value || "";
+      renderShelfIcons();
+    });
+  }
+
+  if (indexPage) {
+    indexPage.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      indexPage.classList.add("is-dragover");
+    });
+    indexPage.addEventListener("dragleave", () => {
+      indexPage.classList.remove("is-dragover");
+    });
+    indexPage.addEventListener("drop", (e) => {
+      e.preventDefault();
+      indexPage.classList.remove("is-dragover");
+      if (e.dataTransfer?.files?.[0]) {
+        openLibraryModal();
+        handleFileUpload(e.dataTransfer.files[0]);
+      }
+    });
+  }
+
   function renderLibraryCards() {
     libraryBookCount.textContent = String(libraryBooks.length);
+    renderShelfIcons();
     if (libraryBooks.length === 0) {
-      libraryGrid.innerHTML = `<div class="library-empty">No books uploaded yet. Drop any <strong>.epub</strong> or <strong>.pdf</strong> above to create your first interactive edition!</div>`;
+      libraryGrid.innerHTML = `<div class="library-empty">No items yet. Drop an <strong>.epub</strong> / <strong>.pdf</strong> or paste a link above!</div>`;
       return;
     }
 
@@ -2533,7 +2751,7 @@
     libraryGrid.querySelectorAll("[data-open-book]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const id = btn.dataset.openBook;
-        await loadAndOpenBook(id);
+        await loadAndOpenBook(id, true);
         closeLibraryModal();
       });
     });
@@ -2549,24 +2767,7 @@
 
     libraryGrid.querySelectorAll("[data-delete-book]").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        const id = btn.dataset.deleteBook;
-        if (!window.confirm("Remove this book and its generated comics from the website?")) return;
-        await fetch(`/api/books/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
-        await idbDeleteBook(id);
-        await refreshLibraryList();
-        if (currentBook && currentBook.id === id) {
-          currentBook = null;
-          if (libraryBooks.length > 0) {
-            await loadAndOpenBook(libraryBooks[0].id);
-          } else {
-            emptyStageCard.hidden = false;
-            stageChapterBar.hidden = true;
-            topChPicker.hidden = true;
-            chaptersContainer.innerHTML = "";
-            leftTocNav.innerHTML = "";
-            liveJobPill.hidden = true;
-          }
-        }
+        await deleteBookById(btn.dataset.deleteBook);
       });
     });
   }
@@ -2592,7 +2793,7 @@
     renderLibraryCards();
   }
 
-  async function loadAndOpenBook(bookId) {
+  async function loadAndOpenBook(bookId, pushHash = false) {
     let book = null;
     try {
       const res = await fetch(`/api/books/${encodeURIComponent(bookId)}`);
@@ -2603,6 +2804,15 @@
       book = await idbGetBook(bookId);
     }
     if (!book) return;
+
+    setAppView("reader");
+    if (pushHash) {
+      const targetHash = `#book/${book.id}`;
+      if (window.location.hash !== targetHash) {
+        history.pushState(null, "", targetHash);
+      }
+      window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+    }
 
     renderBookDOM(book);
     updateLiveJobPillFromBook(book);
@@ -2782,7 +2992,7 @@
       uploadStatusBar.hidden = true;
       bookFileInput.value = "";
       await refreshLibraryList();
-      await loadAndOpenBook(newId);
+      await loadAndOpenBook(newId, true);
       closeLibraryModal();
       startLivePolling();
     } catch (err) {
@@ -2837,7 +3047,7 @@
       uploadStatusBar.hidden = true;
       if (bookUrlInput) bookUrlInput.value = "";
       await refreshLibraryList();
-      await loadAndOpenBook(newId);
+      await loadAndOpenBook(newId, true);
       closeLibraryModal();
       startLivePolling();
     } catch (err) {
@@ -2907,6 +3117,19 @@
     }
   });
 
+  window.addEventListener("popstate", () => {
+    const hash = window.location.hash || "";
+    const bookMatch = hash.match(/^#book\/(book_[a-z0-9_]+)/i);
+    if (bookMatch) {
+      const id = bookMatch[1];
+      if (!currentBook || currentBook.id !== id || activeView !== "reader") {
+        loadAndOpenBook(id, false);
+      }
+    } else if (hash === "" || hash === "#" || hash === "#index") {
+      showIndexPage(false);
+    }
+  });
+
   async function bootApp() {
     try {
       const stRes = await fetch("/api/status");
@@ -2924,19 +3147,20 @@
     }
 
     await refreshLibraryList();
-    const savedBookId = loadJSON(ACTIVE_BOOK_KEY, null);
-    const targetId =
-      savedBookId && libraryBooks.some((b) => b.id === savedBookId)
-        ? savedBookId
-        : libraryBooks[0]?.id || null;
+    if (libraryBooks.some((b) => b.job?.status === "processing")) {
+      startLivePolling();
+    }
 
-    if (targetId) {
-      await loadAndOpenBook(targetId);
-      if (libraryBooks.some((b) => b.job?.status === "processing")) {
-        startLivePolling();
-      }
+    // Route based on URL hash: `#book/<id>` (or in-book section hash on reload) opens reader; `/` or `#index` opens Icon Index Page
+    const hash = window.location.hash || "";
+    const bookMatch = hash.match(/^#book\/(book_[a-z0-9_]+)/i);
+    const savedBookId = loadJSON(ACTIVE_BOOK_KEY, null);
+    if (bookMatch && libraryBooks.some((b) => b.id === bookMatch[1])) {
+      await loadAndOpenBook(bookMatch[1], false);
+    } else if (hash && hash !== "#" && hash !== "#index" && savedBookId && libraryBooks.some((b) => b.id === savedBookId)) {
+      await loadAndOpenBook(savedBookId, false);
     } else {
-      openLibraryModal();
+      showIndexPage(false);
     }
   }
 
