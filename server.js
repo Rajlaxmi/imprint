@@ -1089,6 +1089,156 @@ function streamUploadToFile(req, destPath, maxBytes = 150 * 1024 * 1024) {
   });
 }
 
+function normalizeBookSourceUrl(rawUrl) {
+  const parsed = new URL(rawUrl);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Only http:// and https:// links are supported.");
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  // 1. arXiv abstract -> direct PDF
+  const arxivMatch = parsed.pathname.match(/^\/abs\/([0-9]+\.[0-9]+(?:v\d+)?|[a-z-]+\/[0-9]+)$/i);
+  if ((host === "arxiv.org" || host.endsWith(".arxiv.org")) && arxivMatch) {
+    return `https://arxiv.org/pdf/${arxivMatch[1]}.pdf`;
+  }
+
+  // 2. Project Gutenberg book landing page -> EPUB3 download
+  const gutenbergMatch = parsed.pathname.match(/^\/ebooks\/(\d+)\/?$/i);
+  if ((host === "gutenberg.org" || host === "www.gutenberg.org") && gutenbergMatch) {
+    return `https://www.gutenberg.org/ebooks/${gutenbergMatch[1]}.epub3.images`;
+  }
+
+  // 3. Google Drive share link -> direct download
+  const driveMatch = parsed.pathname.match(/^\/file\/d\/([^/]+)/);
+  if (host === "drive.google.com" && driveMatch) {
+    return `https://drive.google.com/uc?export=download&id=${driveMatch[1]}`;
+  }
+
+  // 4. Dropbox share link -> direct download
+  if (host.endsWith("dropbox.com") && parsed.searchParams.get("dl") === "0") {
+    parsed.searchParams.set("dl", "1");
+    return parsed.toString();
+  }
+
+  return parsed.toString();
+}
+
+async function downloadRemoteBook(rawUrl, destDir, maxBytes = 150 * 1024 * 1024) {
+  const fetchUrl = normalizeBookSourceUrl(rawUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+
+  try {
+    const resp = await fetch(fetchUrl, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) BookVizStudio/1.0",
+        Accept:
+          "application/epub+zip,application/pdf,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8",
+      },
+    });
+
+    if (!resp.ok || !resp.body) {
+      throw new Error(`Remote link returned HTTP ${resp.status}`);
+    }
+
+    fs.mkdirSync(destDir, { recursive: true });
+    const tmpPath = path.join(destDir, "download.tmp");
+    const out = fs.createWriteStream(tmpPath);
+
+    let totalBytes = 0;
+    let headBuf = Buffer.alloc(0);
+
+    for await (const chunk of resp.body) {
+      const buf = Buffer.from(chunk);
+      totalBytes += buf.length;
+      if (totalBytes > maxBytes) {
+        out.destroy();
+        fs.unlink(tmpPath, () => {});
+        throw new Error("Remote file exceeds 150 MB limit.");
+      }
+      if (headBuf.length < 512) {
+        headBuf = Buffer.concat([headBuf, buf.subarray(0, 512 - headBuf.length)]);
+      }
+      out.write(buf);
+    }
+
+    await new Promise((resolve, reject) => {
+      out.end(() => resolve());
+      out.on("error", reject);
+    });
+
+    if (totalBytes < 64) {
+      fs.unlinkSync(tmpPath);
+      throw new Error("Downloaded file from link is empty.");
+    }
+
+    const contentType = String(resp.headers.get("content-type") || "").toLowerCase();
+    const contentDisp = String(resp.headers.get("content-disposition") || "");
+    const finalUrlPath = new URL(resp.url || fetchUrl).pathname;
+
+    // Detect actual format via magic bytes first, then headers & URL extension
+    let ext = "";
+    const headAscii = headBuf.subarray(0, 16).toString("latin1");
+    const headUtf8 = headBuf.toString("utf8").trimStart().toLowerCase();
+
+    if (headAscii.startsWith("%PDF-")) {
+      ext = ".pdf";
+    } else if (headBuf[0] === 0x50 && headBuf[1] === 0x4b) {
+      ext = ".epub";
+    } else if (contentType.includes("application/pdf") || finalUrlPath.toLowerCase().endsWith(".pdf")) {
+      ext = ".pdf";
+    } else if (
+      contentType.includes("epub") ||
+      finalUrlPath.toLowerCase().endsWith(".epub") ||
+      finalUrlPath.toLowerCase().includes(".epub")
+    ) {
+      ext = ".epub";
+    } else if (
+      contentType.includes("text/html") ||
+      contentType.includes("xhtml") ||
+      headUtf8.startsWith("<!doctype html") ||
+      headUtf8.startsWith("<html") ||
+      headUtf8.startsWith("<?xml")
+    ) {
+      ext = ".html";
+    } else {
+      fs.unlinkSync(tmpPath);
+      throw new Error(
+        `Unsupported link content (${contentType || "binary"}). Paste a link to an EPUB, PDF, Gutenberg book, arXiv paper, or readable web page.`
+      );
+    }
+
+    // Derive clean filename/title hint
+    let rawFilename = "";
+    const cdMatch = contentDisp.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)["']?/i);
+    if (cdMatch) rawFilename = decodeURIComponent(cdMatch[1]);
+    if (!rawFilename) {
+      rawFilename = decodeURIComponent(path.basename(finalUrlPath)) || "linked_book";
+    }
+
+    const sourcePath = path.join(destDir, `source${ext}`);
+    fs.renameSync(tmpPath, sourcePath);
+
+    const guessTitle = rawFilename
+      .replace(/\.(epub3\.images|epub|pdf|xhtml|html|htm)$/i, "")
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return {
+      ext,
+      sourcePath,
+      originalFilename: rawFilename,
+      guessTitle: guessTitle && !/^\d+$/.test(guessTitle) ? guessTitle : "Imported Link Edition",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
   const pathname = parsedUrl.pathname;
@@ -1198,6 +1348,67 @@ const server = http.createServer(async (req, res) => {
         bookId,
         book: initialBook,
       });
+    }
+
+    // 3b. Import Book by URL (Direct .epub / .pdf, Gutenberg, arXiv, Drive, or Web Text)
+    if (pathname === "/api/books/import-url" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      const rawUrl = String(body.url || "").trim();
+      const comicMode = String(body.comicMode || "all");
+      if (!rawUrl) {
+        return sendJSON(res, 400, { error: "Please paste a valid http:// or https:// link." });
+      }
+
+      const bookId = `book_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      const dir = bookDir(bookId);
+
+      try {
+        const dl = await downloadRemoteBook(rawUrl, dir);
+        const fmtLabel = dl.ext === ".html" ? "web" : dl.ext.slice(1);
+        const now = Date.now();
+        const initialBook = {
+          id: bookId,
+          title: dl.guessTitle,
+          subtitle: "",
+          author: "Extracting…",
+          publisherMeta: `${fmtLabel.toUpperCase()} EDITION`,
+          pubDate: "",
+          balanceDue: "PROCESSING",
+          tagline: "“EXTRACTING ACTUAL CHAPTER PROSE…”",
+          sourceFormat: fmtLabel,
+          sourceUrl: rawUrl,
+          originalFilename: dl.originalFilename,
+          sourcePath: dl.sourcePath,
+          totalPages: 0,
+          wordCount: 0,
+          createdAt: now,
+          updatedAt: now,
+          job: {
+            status: "processing",
+            readable: false,
+            comicMode,
+            percent: 4,
+            phase: "Downloaded from link — extracting chapters & launching Gemini enrichment…",
+          },
+          chapters: [],
+        };
+
+        writeBook(initialBook);
+        writeBookState(bookId, { chapters: {} });
+
+        setImmediate(() => {
+          processBookInBackground(bookId, { comicMode });
+        });
+
+        return sendJSON(res, 202, {
+          ok: true,
+          bookId,
+          book: initialBook,
+        });
+      } catch (dlErr) {
+        fs.rmSync(dir, { recursive: true, force: true });
+        return sendJSON(res, 400, { error: dlErr.message || "Failed to fetch book from URL." });
+      }
     }
 
     // 4. Book-Scoped Endpoints: /api/books/:bookId/...

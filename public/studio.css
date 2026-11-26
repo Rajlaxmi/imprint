@@ -472,6 +472,58 @@
   color: var(--ink-secondary);
 }
 
+.url-import-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--ink-muted);
+}
+
+.url-import-divider::before,
+.url-import-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.url-import-form {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.url-import__input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  height: 38px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-elevated);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.83rem;
+}
+
+.url-import__input:focus {
+  outline: 2px solid var(--vermilion);
+  outline-offset: -1px;
+  border-color: var(--vermilion);
+}
+
+.url-import__btn {
+  height: 38px;
+  padding: 0 1rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .upload-dropzone__options {
   display: flex;
   align-items: center;

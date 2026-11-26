@@ -896,9 +896,114 @@ def extract_pdf_with_fitz(pdf_path: str) -> dict:
     }
 
 
+def extract_html_document(html_path: str) -> dict:
+    with open(html_path, "rb") as f:
+        raw_html = f.read().decode("utf-8", errors="replace")
+
+    title_m = re.search(r"<title[^>]*>(.*?)</title>", raw_html, re.I | re.S)
+    raw_title = strip_tags(title_m.group(1)) if title_m else ""
+    author_m = re.search(
+        r'<meta[^>]+name=["\'](?:author|dc\.creator|dcterms\.creator)["\'][^>]+content=["\']([^"\']+)["\']',
+        raw_html,
+        re.I,
+    )
+    author = clean_whitespace(author_m.group(1)) if author_m else "Web Edition"
+
+    # Split into chapters if multiple <h1>/<h2> chapter headings exist, else single chapter
+    parser = EpubXHTMLConverter()
+    parser.feed(raw_html)
+    parser._flush_block()
+
+    if not parser.blocks:
+        raise ValueError("No readable article or book text found at that URL.")
+
+    grouped = []
+    current_title = parser.first_heading or raw_title or "Chapter 1"
+    current_blocks = []
+
+    for b in parser.blocks:
+        if (
+            b["type"] == "subhead"
+            and re.match(r"^(chapter|part|book|lecture|act)\s+([0-9ivxlcdm]+|[a-z-]+)\b", b["html"], re.I)
+            and sum(count_words(x["html"]) for x in current_blocks) >= 180
+        ):
+            grouped.append((current_title, current_blocks))
+            current_title = b["html"]
+            current_blocks = []
+        else:
+            current_blocks.append(b)
+    if current_blocks:
+        grouped.append((current_title, current_blocks))
+
+    chapters = []
+    synthetic_page = 1
+    for idx, (ch_t, blks) in enumerate(grouped):
+        ch_num = idx + 1
+        ch_start = synthetic_page
+        words_on_page = 0
+        paragraphs = []
+        for b_idx, b in enumerate(blks):
+            b_html = re.sub(r"\[\[(?:NOTEREF|FOLIO):[^\]]+\]\]", "", b["html"]).strip()
+            if not strip_tags(b_html):
+                continue
+            w_cnt = count_words(b_html)
+            words_on_page += w_cnt
+            if b_idx == 0 or words_on_page >= 310:
+                if b_idx > 0:
+                    synthetic_page += max(1, words_on_page // 310)
+                    words_on_page = words_on_page % 310
+                if b["type"] == "p":
+                    b_html = (
+                        f'<span class="folio-marker" data-page="{synthetic_page}" '
+                        f'title="Page {synthetic_page}">p. {synthetic_page}</span>' + b_html
+                    )
+            paragraphs.append({"type": b["type"], "html": b_html, "page": synthetic_page})
+
+        if not paragraphs:
+            continue
+        ch_end = max(ch_start, synthetic_page)
+        synthetic_page = ch_end + 1
+        ch_label = chapter_word_label(ch_num)
+        clean_t = clean_whitespace(ch_t)
+        chapters.append({
+            "slug": f"chapter-{ch_num}",
+            "num": ch_num,
+            "chapterLabel": ch_label,
+            "title": clean_t or ch_label,
+            "shortTitle": make_short_title(clean_t, ch_label),
+            "folioStart": ch_start,
+            "folioEnd": ch_end,
+            "wordCount": sum(count_words(p["html"]) for p in paragraphs),
+            "paragraphs": paragraphs,
+            "endnotes": [],
+        })
+
+    if not chapters or sum(c["wordCount"] for c in chapters) < 40:
+        raise ValueError("The linked web page did not contain enough readable text to build a book edition.")
+
+    if not raw_title:
+        raw_title = chapters[0]["title"]
+    subtitle = ""
+    if ":" in raw_title:
+        parts = raw_title.split(":", 1)
+        raw_title, subtitle = parts[0].strip(), parts[1].strip()
+
+    return {
+        "sourceFormat": "web",
+        "title": raw_title,
+        "subtitle": subtitle,
+        "author": author,
+        "publisherMeta": "WEB LINK EDITION",
+        "pubDate": "",
+        "totalPages": max(1, synthetic_page - 1),
+        "wordCount": sum(c["wordCount"] for c in chapters),
+        "chapters": chapters,
+    }
+
+
 def main():
     if len(sys.argv) < 3:
-        print("Usage: extract_book.py <input.epub|input.pdf> <output.json>", file=sys.stderr)
+        print("Usage: extract_book.py <input.epub|input.pdf|input.html> <output.json>", file=sys.stderr)
         sys.exit(1)
 
     in_path = sys.argv[1]
@@ -916,8 +1021,10 @@ def main():
                 raise epub_err
     elif ext == ".pdf":
         result = extract_pdf_with_fitz(in_path)
+    elif ext in (".html", ".htm", ".xhtml"):
+        result = extract_html_document(in_path)
     else:
-        raise ValueError(f"Unsupported file extension: {ext}. Please upload an .epub or .pdf file.")
+        raise ValueError(f"Unsupported file extension: {ext}. Please provide an .epub, .pdf, or readable web URL.")
 
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:

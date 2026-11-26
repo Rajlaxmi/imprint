@@ -123,6 +123,9 @@
   const uploadDropzone = document.getElementById("uploadDropzone");
   const bookFileInput = document.getElementById("bookFileInput");
   const uploadBrowseBtn = document.getElementById("uploadBrowseBtn");
+  const bookUrlForm = document.getElementById("bookUrlForm");
+  const bookUrlInput = document.getElementById("bookUrlInput");
+  const bookUrlSubmitBtn = document.getElementById("bookUrlSubmitBtn");
   const comicModeSelect = document.getElementById("comicModeSelect");
   const uploadStatusBar = document.getElementById("uploadStatusBar");
   const uploadStatusText = document.getElementById("uploadStatusText");
@@ -2794,6 +2797,63 @@
       handleFileUpload(bookFileInput.files[0]);
     }
   });
+
+  async function handleUrlImport(rawUrl) {
+    const url = String(rawUrl || "").trim();
+    if (!url) return;
+
+    uploadStatusBar.hidden = false;
+    uploadStatusText.textContent = `Fetching book from link…`;
+    uploadStatusPct.textContent = "20%";
+    uploadProgressFill.style.width = "20%";
+    if (bookUrlSubmitBtn) bookUrlSubmitBtn.disabled = true;
+
+    try {
+      const res = await fetch("/api/books/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url,
+          comicMode: comicModeSelect.value || "all",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Link import failed");
+
+      uploadStatusText.textContent = "Extracting full chapters & launching Gemini background worker…";
+      uploadStatusPct.textContent = "65%";
+      uploadProgressFill.style.width = "65%";
+
+      const newId = data.bookId;
+      for (let wait = 0; wait < 14; wait++) {
+        await new Promise((r) => setTimeout(r, 700));
+        const pRes = await fetch(`/api/books/${encodeURIComponent(newId)}/progress`);
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          if (pData.chapterCount > 0 || pData.job?.status === "error") break;
+        }
+      }
+
+      uploadStatusBar.hidden = true;
+      if (bookUrlInput) bookUrlInput.value = "";
+      await refreshLibraryList();
+      await loadAndOpenBook(newId);
+      closeLibraryModal();
+      startLivePolling();
+    } catch (err) {
+      uploadStatusText.textContent = `Link error: ${err.message}`;
+      uploadStatusPct.textContent = "Error";
+    } finally {
+      if (bookUrlSubmitBtn) bookUrlSubmitBtn.disabled = false;
+    }
+  }
+
+  if (bookUrlForm) {
+    bookUrlForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      handleUrlImport(bookUrlInput.value);
+    });
+  }
 
   uploadDropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
