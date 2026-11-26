@@ -1748,6 +1748,29 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (pathname === "/api/publish-github" && req.method === "POST") {
+      hydrateDataFromPublicLibraryAndSync();
+      try {
+        await new Promise((resolve, reject) => {
+          execFile(
+            "sh",
+            [
+              "-c",
+              "git add public/library && (git diff --cached --quiet || git commit -m 'Sync local notes, highlights & library to Imprint') && git push imprint main && git push origin main",
+            ],
+            { cwd: ROOT_DIR, timeout: 45000 },
+            (err, stdout, stderr) => {
+              if (err) return reject(new Error(stderr || stdout || err.message));
+              resolve(stdout);
+            }
+          );
+        });
+        return sendJSON(res, 200, { ok: true, message: "Uploaded local notes, highlights & books to GitHub Pages." });
+      } catch (err) {
+        return sendJSON(res, 500, { error: err.message || "Git push failed" });
+      }
+    }
+
     // 2. List All Stored Books in Website Library
     if (pathname === "/api/books" && req.method === "GET") {
       const lib = readLibrary();
@@ -2028,9 +2051,22 @@ const server = http.createServer(async (req, res) => {
         const list = Array.isArray(body.annotations) ? body.annotations : [];
         const state = readBookState(bookId);
         if (!state.chapters[ch]) state.chapters[ch] = { annotations: [], chatMessages: [] };
-        state.chapters[ch].annotations = list;
+        if (body.mode === "merge") {
+          const byId = new Map();
+          for (const a of state.chapters[ch].annotations || []) {
+            if (a && a.id) byId.set(a.id, a);
+          }
+          for (const a of list) {
+            if (a && a.id) byId.set(a.id, { ...(byId.get(a.id) || {}), ...a });
+          }
+          state.chapters[ch].annotations = Array.from(byId.values()).sort(
+            (x, y) => (x.createdAt || 0) - (y.createdAt || 0)
+          );
+        } else {
+          state.chapters[ch].annotations = list;
+        }
         writeBookState(bookId, state);
-        return sendJSON(res, 200, { ok: true, chapter: ch, count: list.length });
+        return sendJSON(res, 200, { ok: true, chapter: ch, count: state.chapters[ch].annotations.length });
       }
 
       // POST /api/books/:id/chat/sync -> Persist merged client/offline chat history on server

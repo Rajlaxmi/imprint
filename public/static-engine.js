@@ -2086,9 +2086,11 @@
         const st = await dbGetState(bookId);
         const ch = body.chapter || "chapter-1";
         st.chapters[ch] = st.chapters[ch] || { annotations: [], chatMessages: [] };
-        st.chapters[ch].annotations = Array.isArray(body.annotations) ? body.annotations : [];
+        const incoming = Array.isArray(body.annotations) ? body.annotations : [];
+        st.chapters[ch].annotations =
+          body.mode === "merge" ? mergeAnnotationLists(st.chapters[ch].annotations, incoming) : incoming;
         await dbPutState(bookId, st);
-        return jsonResponse(200, { ok: true });
+        return jsonResponse(200, { ok: true, count: st.chapters[ch].annotations.length });
       }
       if (sub === "chat/sync" && method === "POST") {
         const body = JSON.parse(options?.body || "{}");

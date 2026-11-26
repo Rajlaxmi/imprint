@@ -137,11 +137,40 @@
   function annStorageKey(bookId, ch) {
     return `bvs_${bookId}_${ch}_annotations`;
   }
+  function annDeletedKey(bookId, ch) {
+    return `bvs_${bookId}_${ch}_ann_deleted`;
+  }
+  function annClearedKey(bookId, ch) {
+    return `bvs_${bookId}_${ch}_ann_cleared_at`;
+  }
   function chatStorageKey(bookId, ch) {
     return `bvs_${bookId}_${ch}_chat`;
   }
   function chatClearedKey(bookId, ch) {
     return `bvs_${bookId}_${ch}_chat_cleared_at`;
+  }
+
+  function mergeAnnotationListsClient(lists, deletedSet = new Set(), clearedAfter = 0) {
+    const byId = new Map();
+    for (const arr of lists) {
+      if (!Array.isArray(arr)) continue;
+      for (const a of arr) {
+        if (!a || !a.id) continue;
+        if (deletedSet.has(a.id)) continue;
+        if (clearedAfter && (a.createdAt || 0) <= clearedAfter) continue;
+        const prev = byId.get(a.id);
+        // Prefer entry with non-empty note or numeric offsets
+        if (!prev || ((a.note || "").length >= (prev.note || "").length)) {
+          byId.set(a.id, {
+            ...prev,
+            ...a,
+            start: typeof a.start === "number" ? a.start : prev?.start ?? null,
+            end: typeof a.end === "number" ? a.end : prev?.end ?? null,
+          });
+        }
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   }
 
   function mergeChatMessageLists(lists, clearedAfter = 0) {
@@ -2177,12 +2206,14 @@
       const localAnns = chapterData[ch]?.annotations || loadJSON(annStorageKey(bookId, ch), []);
       const localChat = chapterData[ch]?.chatMessages || loadJSON(chatStorageKey(bookId, ch), []);
       const clearedAt = Number(loadJSON(chatClearedKey(bookId, ch), 0)) || 0;
+      const annClearedAt = Number(loadJSON(annClearedKey(bookId, ch), 0)) || 0;
+      const deletedAnnIds = new Set(loadJSON(annDeletedKey(bookId, ch), []));
 
-      // Annotations: prefer remote if non-empty, else IndexedDB, else localStorage
+      // Annotations (Highlights & Notes): union-merge Server + IndexedDB + localStorage by ID!
       const rAnns = Array.isArray(rc.annotations) ? rc.annotations : [];
       const iAnns = Array.isArray(idbState?.annotations) ? idbState.annotations : [];
-      const bestAnns = rAnns.length > 0 ? rAnns : iAnns.length > 0 ? iAnns : localAnns;
-      chapterData[ch].annotations = bestAnns;
+      const mergedAnns = mergeAnnotationListsClient([rAnns, iAnns, localAnns], deletedAnnIds, annClearedAt);
+      chapterData[ch].annotations = mergedAnns;
 
       // Chat Messages: union-merge Server + IndexedDB + localStorage by message ID!
       const rChat = Array.isArray(rc.chatMessages) ? rc.chatMessages : [];
@@ -2190,8 +2221,19 @@
       const mergedChat = mergeChatMessageLists([rChat, iChat, localChat], clearedAt);
       chapterData[ch].chatMessages = mergedChat;
 
-      saveJSON(annStorageKey(bookId, ch), bestAnns);
+      saveJSON(annStorageKey(bookId, ch), mergedAnns);
       persistChatLocally(bookId, ch, mergedChat);
+
+      // Push any client-only local highlights/notes back up to server/website state.json!
+      const remoteAnnIds = new Set(rAnns.map((a) => a && a.id).filter(Boolean));
+      const hasUnsyncedLocalAnns = mergedAnns.some((a) => !remoteAnnIds.has(a.id));
+      if (serverAvailable && (hasUnsyncedLocalAnns || mergedAnns.length > rAnns.length)) {
+        fetch(`/api/books/${encodeURIComponent(bookId)}/annotations/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chapter: ch, annotations: mergedAnns, mode: "merge" }),
+        }).catch(() => {});
+      }
 
       // Push any client-only chat messages back to server so state.json stays complete
       if (serverAvailable && mergedChat.length > rChat.length) {
@@ -2337,12 +2379,27 @@
     unwrapMarks(chapterEl, "mark.find-hit");
     unwrapMarks(chapterEl, "mark.user-highlight");
 
-    const textHighlights = annotations.filter(
-      (a) => typeof a.start === "number" && typeof a.end === "number" && a.end > a.start
-    );
+    const nodes = getAcceptedTextNodes(chapterEl);
+    const fullText = nodes.map((tn) => tn.nodeValue || "").join("");
+
+    // Resolve inline highlight spans for both offset-based highlights AND quote-based pinned notes
+    const textHighlights = annotations
+      .map((a) => {
+        if (typeof a.start === "number" && typeof a.end === "number" && a.end > a.start) {
+          return a;
+        }
+        const q = String(a.quote || "").trim();
+        if (q.length >= 2 && fullText) {
+          const idx = fullText.indexOf(q);
+          if (idx >= 0) {
+            return { ...a, start: idx, end: idx + q.length };
+          }
+        }
+        return null;
+      })
+      .filter(Boolean);
 
     if (textHighlights.length > 0) {
-      const nodes = getAcceptedTextNodes(chapterEl);
       let cum = 0;
       nodes.forEach((tn) => {
         const text = tn.nodeValue;
@@ -2583,6 +2640,13 @@
         e.stopPropagation();
         editingNoteIds.delete(item.id);
         expandedNoteIds.delete(item.id);
+        if (currentBook) {
+          const delArr = loadJSON(annDeletedKey(currentBook.id, activeChapter), []);
+          if (!delArr.includes(item.id)) {
+            delArr.push(item.id);
+            saveJSON(annDeletedKey(currentBook.id, activeChapter), delArr);
+          }
+        }
         chapterData[activeChapter].annotations = annotations.filter((a) => a.id !== item.id);
         annotations = chapterData[activeChapter].annotations;
         if (selectedAnnotationId === item.id) selectedAnnotationId = null;
@@ -2866,6 +2930,9 @@
   clearAllNotesBtn.addEventListener("click", () => {
     if (!annotations.length) return;
     if (!window.confirm("Remove all saved highlights and notes for this chapter?")) return;
+    if (currentBook) {
+      saveJSON(annClearedKey(currentBook.id, activeChapter), Date.now());
+    }
     chapterData[activeChapter].annotations = [];
     annotations = [];
     selectedAnnotationId = null;
@@ -3769,6 +3836,51 @@
     }
   });
 
+  function injectLocalPublishButton() {
+    const actions = document.querySelector(".reader-bar__actions");
+    if (!actions || document.getElementById("localPublishWebBtn") || document.getElementById("staticSaveSyncBtn")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "bar-btn";
+    btn.id = "localPublishWebBtn";
+    btn.title = "Upload all local books, notes, highlights, endnotes & chats from localhost to raila.io/imprint";
+    btn.innerHTML = `<span aria-hidden="true">☁️</span><span class="bar-btn__label">Publish</span>`;
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      const orig = btn.innerHTML;
+      btn.innerHTML = `<span aria-hidden="true">⏳</span><span class="bar-btn__label">Uploading…</span>`;
+      try {
+        if (currentBook) {
+          for (const ch of Object.keys(chapterData)) {
+            await fetch(`/api/books/${encodeURIComponent(currentBook.id)}/annotations/sync`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ chapter: ch, annotations: chapterData[ch].annotations || [], mode: "merge" }),
+            });
+            await fetch(`/api/books/${encodeURIComponent(currentBook.id)}/chat/sync`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ chapter: ch, chatMessages: chapterData[ch].chatMessages || [] }),
+            });
+          }
+        }
+        const r = await fetch("/api/publish-github", { method: "POST" });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Publish failed");
+        btn.innerHTML = `<span aria-hidden="true">✓</span><span class="bar-btn__label">Uploaded</span>`;
+        setTimeout(() => {
+          btn.innerHTML = orig;
+          btn.disabled = false;
+        }, 2400);
+      } catch (err) {
+        alert("Upload error: " + err.message);
+        btn.innerHTML = orig;
+        btn.disabled = false;
+      }
+    });
+    actions.insertBefore(btn, actions.firstChild);
+  }
+
   async function bootApp() {
     try {
       const stRes = await fetch("/api/status");
@@ -3779,6 +3891,7 @@
         activeModelLabel = st.activeModelLabel || "Gemini 4 Neon";
         aiModelSelect.value = activeModel;
         updateModelStatusUI(Boolean(st.aiConnected));
+        if (!st.staticPagesMode) injectLocalPublishButton();
       }
     } catch (_) {
       serverAvailable = false;
